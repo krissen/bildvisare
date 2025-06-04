@@ -1,30 +1,42 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
 
+let bildFil = process.argv[2]; // fallback för CLI-start
+let mainWindow;
+
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  bildFil = filePath;
+  if (mainWindow) {
+    // Om fönstret redan är öppet, ladda om med nya bilden
+    mainWindow.loadFile("index.html", { query: { bild: bildFil } });
+  } else {
+    // Annars öppnas bilden i createWindow
+  }
+});
+
 function createWindow() {
-  const bildFil = process.argv[2];
   if (!bildFil) {
-    console.error("Ange en bildfil som argument!");
+    console.error("Ange en bildfil som argument eller dra en bild till appen!");
     app.quit();
     return;
   }
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
-    alwaysOnTop: true, // <-- Alltid överst!
+    alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, "renderer.js"),
       nodeIntegration: true,
       contextIsolation: false,
     },
   });
-  win.setMenu(null); // <-- Ingen meny!
-  win.loadFile("index.html", { query: { bild: bildFil } });
+  mainWindow.setMenu(null);
+  mainWindow.loadFile("index.html", { query: { bild: bildFil } });
 
-  // Q stänger fönstret
-  win.webContents.on("before-input-event", (event, input) => {
+  mainWindow.webContents.on("before-input-event", (event, input) => {
     if (input.type === "keyDown" && input.key.toLowerCase() === "q") {
-      win.close();
+      mainWindow.close();
     }
   });
 }
