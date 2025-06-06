@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html>
-  <body style="margin:0; background:#fff;">
-    <img id="bild" style="display: block; margin: auto;" />
+  <body style="margin:0; background:#fff; width:100vw; height:100vh; overflow:hidden;">
+    <div id="bild-container" style="width:100vw; height:100vh; overflow:auto;">
+      <img id="bild" style="display:block;" />
+      <div id="fallback-message" style="display:none; text-align:center; color: #888; font-size:22px; margin-top:30vh;">
+        Ingen bild vald.<br>Dra en bild hit eller öppna med Bildvisare.
+      </div>
+    </div>
     <script src="renderer.js"></script>
-    <!-- 
-      Tips (lägg till om du vill):
-      <div style="position:fixed;bottom:8px;right:12px;opacity:0.6;font-size:14px;">Zoom: + − = (1:1) &nbsp; a = autozoom</div>
-    -->
   </body>
 </html>
 

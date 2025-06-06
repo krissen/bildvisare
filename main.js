@@ -241,7 +241,6 @@ function createWindow() {
     height: 600,
     alwaysOnTop: false,
     webPreferences: {
-      preload: path.join(__dirname, "renderer.js"),
       nodeIntegration: true,
       contextIsolation: false,
     },
@@ -249,14 +248,18 @@ function createWindow() {
   });
   mainWindow.setMenu(null);
   hasOpenedWindow = true;
-  if (bildFil) {
-    updateFileStatus(bildFil);
-    dlog("Fönster laddas med bild:", bildFil);
-    mainWindow.loadFile("index.html", { query: { bild: bildFil } });
+  const resolvedBildFil = bildFil ? path.resolve(bildFil) : null;
+  if (resolvedBildFil) {
+    updateFileStatus(resolvedBildFil);
+    dlog("Fönster laddas med bild:", resolvedBildFil);
+    mainWindow.loadFile("index.html", {
+      query: { bild: encodeURIComponent(resolvedBildFil) },
+    });
   } else {
     dlog("Fönster laddas utan bild");
-    mainWindow.loadFile("index.html");
+    mainWindow.loadFile("index.html", { query: { bild: "" } }); // <-- alltid med query-param!
   }
+
   addSlaveKeybinds(mainWindow);
 }
 
