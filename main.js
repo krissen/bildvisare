@@ -214,7 +214,7 @@ function addSlaveKeybinds(win) {
       }
     }
     // ESC = stäng alla slavinstanser (från huvudapp, ej slav själv)
-    if (!IS_SLAVE && input.type === "keyDown" && input.key === "Escape") {
+    if (input.type === "keyDown" && input.key === "Escape") {
       dlog("Keybind ESC: försöker stänga slavinstanser via pkill");
       spawn("pkill", ["-f", "--", "Bildvisare.*--slave"], {
         detached: true,
