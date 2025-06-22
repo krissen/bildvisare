@@ -1,3 +1,5 @@
+// renderer.js
+
 const DEBUG = true;
 function dlog(...args) {
   if (DEBUG) console.log("[bildvisare:renderer]", ...args);
@@ -10,6 +12,10 @@ const container = document.getElementById("bild-container");
 const img = document.getElementById("bild");
 const fallback = document.getElementById("fallback-message");
 
+const params = new URLSearchParams(window.location.search);
+const IS_SLAVE = params.get("slave") === "1";
+let detached = false; // Slavens frikopplingsläge
+
 let zoomMode = "auto";
 let zoomFactor = 1;
 let zoomingIn = false;
@@ -21,47 +27,42 @@ let lastCursorInImg = false;
 let lastCursorPos = { x: 0, y: 0 };
 let lastMouseClientX = 0;
 let lastMouseClientY = 0;
+let suppressSync = false; // För att undvika loopar vid synkning
 
 function getBildPath() {
-  const params = new URLSearchParams(window.location.search);
   const val = params.get("bild");
-  // Avkoda om det är encoded
   return val ? decodeURIComponent(val) : null;
 }
-
-function getImageCenter() {
-  return {
-    x: img.naturalWidth ? img.naturalWidth / 2 : 0,
-    y: img.naturalHeight ? img.naturalHeight / 2 : 0,
-  };
-}
-
-function doZoom(dir) {
-  let center =
-    zoomMode !== "auto" && lastCursorInImg ? lastCursorPos : getImageCenter();
-
-  if (zoomMode === "auto") {
-    zoomFactor = getFitZoomFactor();
-    zoomMode = "manual";
-  }
-  if (dir === "in") {
-    zoomFactor = Math.min(zoomFactor * 1.07, 10);
-  } else {
-    zoomFactor = Math.max(zoomFactor / 1.07, 0.1);
-  }
-  updateImageDisplay(center, true);
-}
-
-function isZoomInKey(event) {
-  return event.key === "+";
-}
-
-function isZoomOutKey(event) {
-  return event.key === "-";
-}
-
 const bildPath = getBildPath();
 let lastMtime = 0;
+
+// Skapa overlay-element i DOM
+const waitOverlay = document.createElement("div");
+waitOverlay.style.position = "fixed";
+waitOverlay.style.left = "0";
+waitOverlay.style.top = "0";
+waitOverlay.style.width = "100vw";
+waitOverlay.style.height = "100vh";
+waitOverlay.style.background = "rgba(10,10,10,0.72)";
+waitOverlay.style.display = "flex";
+waitOverlay.style.flexDirection = "column";
+waitOverlay.style.alignItems = "center";
+waitOverlay.style.justifyContent = "center";
+waitOverlay.style.zIndex = 10000;
+waitOverlay.style.fontSize = "2.2em";
+waitOverlay.style.color = "#fff";
+waitOverlay.style.backdropFilter = "blur(2px)";
+waitOverlay.innerHTML = "<div>Väntar på konvertering av original…</div>";
+waitOverlay.style.display = "none";
+document.body.appendChild(waitOverlay);
+
+require("electron").ipcRenderer.on("show-wait-overlay", (_e, msg) => {
+  waitOverlay.innerHTML = `<div>${msg || "Väntar på konvertering av original…"}</div>`;
+  waitOverlay.style.display = "flex";
+});
+require("electron").ipcRenderer.on("hide-wait-overlay", () => {
+  waitOverlay.style.display = "none";
+});
 
 dlog("window.location.search:", window.location.search);
 dlog("getBildPath():", getBildPath());
@@ -86,7 +87,25 @@ if (!bildPath) {
     return Math.min(winW / naturalWidth, winH / naturalHeight);
   }
 
-  function updateImageDisplay(center = null, keepPointInView = false) {
+  function getImageCenter() {
+    return {
+      x: img.naturalWidth ? img.naturalWidth / 2 : 0,
+      y: img.naturalHeight ? img.naturalHeight / 2 : 0,
+    };
+  }
+
+  function isZoomInKey(event) {
+    return event.key === "+";
+  }
+  function isZoomOutKey(event) {
+    return event.key === "-";
+  }
+
+  function updateImageDisplay(
+    center = null,
+    keepPointInView = false,
+    skipSync = false,
+  ) {
     if (zoomMode === "auto") {
       img.style.width = "100%";
       img.style.height = "100%";
@@ -118,6 +137,49 @@ if (!bildPath) {
         });
       }
     }
+    // Skicka sync till andra fönstret
+    if (!skipSync) syncViewToOther();
+  }
+
+  function syncViewToOther() {
+    if (IS_SLAVE && detached) return; // Slav frikopplad: ingen sync ut
+    if (suppressSync) return; // undvik loopar
+    // Proportionell scroll (scrollLeft/total, scrollTop/total)
+    ipcRenderer.send("sync-view", {
+      zoom: zoomFactor,
+      x: (container.scrollLeft || 0) / Math.max(1, naturalWidth * zoomFactor),
+      y: (container.scrollTop || 0) / Math.max(1, naturalHeight * zoomFactor),
+      slave: IS_SLAVE ? 1 : 0,
+    });
+  }
+
+  ipcRenderer.on("apply-view", (event, { zoom, x, y }) => {
+    if (IS_SLAVE && detached) return; // ignorera sync om frikopplad slav
+    suppressSync = true;
+    zoomMode = "manual";
+    zoomFactor = zoom;
+    updateImageDisplay(null, false, true); // skipSync: true (undvik loop)
+    // Justera scroll proportionerligt
+    requestAnimationFrame(() => {
+      container.scrollLeft = x * (naturalWidth * zoomFactor);
+      container.scrollTop = y * (naturalHeight * zoomFactor);
+      suppressSync = false;
+    });
+  });
+
+  function doZoom(dir) {
+    let center =
+      zoomMode !== "auto" && lastCursorInImg ? lastCursorPos : getImageCenter();
+    if (zoomMode === "auto") {
+      zoomFactor = getFitZoomFactor();
+      zoomMode = "manual";
+    }
+    if (dir === "in") {
+      zoomFactor = Math.min(zoomFactor * 1.07, 10);
+    } else {
+      zoomFactor = Math.max(zoomFactor / 1.07, 0.1);
+    }
+    updateImageDisplay(center, true);
   }
 
   let lastMouseClientX = 0,
@@ -125,7 +187,6 @@ if (!bildPath) {
 
   img.addEventListener("mousemove", (e) => {
     const rect = img.getBoundingClientRect();
-    // Bara om musen är inom bildytan
     if (
       e.clientX >= rect.left &&
       e.clientX <= rect.right &&
@@ -133,7 +194,6 @@ if (!bildPath) {
       e.clientY <= rect.bottom
     ) {
       lastCursorInImg = true;
-      // Bildkoordinater
       lastCursorPos = {
         x: ((e.clientX - rect.left) / rect.width) * img.naturalWidth,
         y: ((e.clientY - rect.top) / rect.height) * img.naturalHeight,
@@ -158,6 +218,10 @@ if (!bildPath) {
     updateImageDisplay();
     if (ipcRenderer) ipcRenderer.send("bild-visad");
   };
+
+  container.addEventListener("scroll", () => {
+    syncViewToOther();
+  });
 
   window.addEventListener("resize", () => {
     if (zoomMode === "auto") updateImageDisplay();
@@ -213,6 +277,34 @@ if (!bildPath) {
       zoomMode = "auto";
       updateImageDisplay();
       event.preventDefault();
+    } else if (event.key.toLowerCase() === "x" && IS_SLAVE) {
+      // Aktivera/avaktivera frikoppling för slav
+      detached = !detached;
+      dlog("Slav frikoppling:", detached);
+      // Enkel overlay om du vill:
+      let overlay = document.getElementById("detach-overlay");
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "detach-overlay";
+        overlay.style.position = "fixed";
+        overlay.style.top = "10px";
+        overlay.style.right = "10px";
+        overlay.style.zIndex = 1000;
+        overlay.style.background = "rgba(255,0,0,0.75)";
+        overlay.style.color = "#fff";
+        overlay.style.padding = "6px 16px";
+        overlay.style.fontSize = "18px";
+        overlay.style.borderRadius = "8px";
+        document.body.appendChild(overlay);
+      }
+      overlay.textContent = detached
+        ? "Frikopplad från master"
+        : "Synkroniserad med master";
+      overlay.style.display = "block";
+      setTimeout(() => {
+        if (overlay) overlay.style.display = "none";
+      }, 2000);
+      event.preventDefault();
     }
   });
 
@@ -234,8 +326,6 @@ if (!bildPath) {
       if (!err && stats.mtimeMs !== lastMtime) {
         dlog("Bildfil uppdaterad, laddar om.");
         lastMtime = stats.mtimeMs;
-        const prevMode = zoomMode;
-        const prevFactor = zoomFactor;
         img.onload = function () {
           dlog(
             "img.onload efter reload, storlek:",
