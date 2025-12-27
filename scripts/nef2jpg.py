@@ -8,7 +8,8 @@ try:
     import rawpy
     from PIL import Image
 except ImportError:
-    print("Installera rawpy och pillow!", file=sys.stderr)
+    print("ERROR: Please install required packages: rawpy and pillow", file=sys.stderr)
+    print("Run: pip install rawpy pillow", file=sys.stderr)
     sys.exit(1)
 
 
@@ -20,16 +21,34 @@ def main():
     jpg_path = Path(sys.argv[2])
 
     if not nef_path.exists():
-        print(f"Filen finns ej: {nef_path}", file=sys.stderr)
+        print(f"ERROR: File does not exist: {nef_path}", file=sys.stderr)
         sys.exit(3)
 
-    # Läs NEF, konvertera till RGB
-    with rawpy.imread(str(nef_path)) as raw:
-        rgb = raw.postprocess()
+    # Read NEF and convert to RGB
+    try:
+        with rawpy.imread(str(nef_path)) as raw:
+            rgb = raw.postprocess()
+    except rawpy.LibRawError as e:
+        print(f"ERROR: Failed to read NEF file: {e}", file=sys.stderr)
+        print(f"File may be corrupted or not a valid NEF: {nef_path}", file=sys.stderr)
+        sys.exit(4)
+    except Exception as e:
+        print(f"ERROR: Unexpected error reading NEF: {e}", file=sys.stderr)
+        sys.exit(5)
 
-    img = Image.fromarray(rgb)
-    img.save(jpg_path, format="JPEG", quality=98)
+    # Convert to JPEG
+    try:
+        img = Image.fromarray(rgb)
+        img.save(jpg_path, format="JPEG", quality=98)
+    except OSError as e:
+        print(f"ERROR: Failed to save JPG file: {e}", file=sys.stderr)
+        print(f"Check disk space and permissions for: {jpg_path}", file=sys.stderr)
+        sys.exit(6)
+    except Exception as e:
+        print(f"ERROR: Unexpected error saving JPG: {e}", file=sys.stderr)
+        sys.exit(7)
 
+    # Write status file
     status_path = (
         Path.home()
         / "Library"
@@ -41,11 +60,20 @@ def main():
         "timestamp": time.time(),
         "source_nef": str(nef_path),
         "exported_jpg": str(jpg_path),
-        "exported": "true",
+        "exported": True,
     }
-    status_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(status_path, "w") as f:
-        json.dump(status, f, indent=2)
+
+    try:
+        status_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(status_path, "w") as f:
+            json.dump(status, f, indent=2)
+    except OSError as e:
+        print(f"WARNING: Failed to write status file: {e}", file=sys.stderr)
+        print(f"Conversion succeeded but status not saved to: {status_path}", file=sys.stderr)
+        # Don't exit with error - conversion was successful
+    except Exception as e:
+        print(f"WARNING: Unexpected error writing status: {e}", file=sys.stderr)
+        # Don't exit with error - conversion was successful
 
 
 if __name__ == "__main__":

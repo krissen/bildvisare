@@ -1,21 +1,28 @@
 # nef2jpg.py Improvements TODO
 
-## Prioritet 1 - Kritiskt
+## Prioritet 1 - Kritiskt ✅ COMPLETED
 
 ### Felhantering
-- [ ] Lägg till try/except runt `rawpy.imread()` för att hantera korrupta NEF-filer
-- [ ] Lägg till try/except runt `img.save()` för att hantera disk full/permissions
-- [ ] Lägg till try/except runt `json.dump()` för att hantera write failures
-- [ ] Lägg till lämpliga felmeddelanden för varje exception-typ
+- [x] Lägg till try/except runt `rawpy.imread()` för att hantera korrupta NEF-filer
+- [x] Lägg till try/except runt `img.save()` för att hantera disk full/permissions
+- [x] Lägg till try/except runt `json.dump()` för att hantera write failures
+- [x] Lägg till lämpliga felmeddelanden för varje exception-typ
 
 ### Bugfixar
-- [ ] Fixa rad 44: Ändra `"exported": "true"` till `"exported": true` (boolean)
+- [x] Fixa rad 44: Ändra `"exported": "true"` till `"exported": true` (boolean)
 
 ### Kodstil
-- [ ] Översätt rad 11: "Installera rawpy och pillow!" → English
-- [ ] Översätt rad 23: "Filen finns ej" → English
-- [ ] Översätt rad 26 kommentar: "Läs NEF, konvertera till RGB" → English
-- [ ] Översätt alla andra svenska kommentarer/strängar → English
+- [x] Översätt rad 11: "Installera rawpy och pillow!" → English
+- [x] Översätt rad 23: "Filen finns ej" → English
+- [x] Översätt rad 26 kommentar: "Läs NEF, konvertera till RGB" → English
+- [x] Översätt alla andra svenska kommentarer/strängar → English
+
+### Improvements Made
+- Added comprehensive error handling with specific exit codes (4-7)
+- Fixed boolean value bug (line 64)
+- Translated all Swedish text to English
+- Added helpful error messages for each failure scenario
+- Status file write failures are now warnings (conversion still succeeds)
 
 ## Prioritet 2 - Rekommenderat
 
