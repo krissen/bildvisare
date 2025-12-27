@@ -4,7 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bildvisare is an Electron-based image viewer for macOS with a unique capability: it monitors image files for changes and automatically refreshes the display. It serves as a companion app to [hitta_ansikten](https://github.com/krissen/hitta_ansikten), providing real-time visualization of processed images.
+Bildvisare is an Electron-based image viewer for macOS with a unique capability: it monitors image files for changes and automatically refreshes the display.
+
+**Relationship to hitta_ansikten:**
+This app serves as a companion viewer to [hitta_ansikten](https://github.com/krissen/hitta_ansikten) (located at `~/dev/hitta_ansikten`), a face detection application that processes photos. The typical workflow is:
+1. `hitta_ansikten` processes images, detects faces, and exports results
+2. `bildvisare` displays the processed images and automatically refreshes when files are updated
+3. User can press 'O' to open the original NEF file side-by-side for comparison
+4. Both windows can be synchronized for zoom/pan, enabling detailed comparison of before/after
 
 The application supports a master-slave architecture where:
 - **Master window**: Displays processed images and watches for updates
@@ -32,10 +39,17 @@ The application supports a master-slave architecture where:
 - Main instance polls `original_status.json` every 1.5s to auto-launch slave viewers
 
 ### External Dependencies
-The NEF-to-JPG conversion relies on:
-- Python path: `/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3`
-- Script path: `/Users/krisniem/dev/hitta_ansikten/nef2jpg.py`
-- These are hardcoded in main.js:41-42
+
+**hitta_ansikten repository:**
+- Location: `~/dev/hitta_ansikten`
+- This is the companion face detection application that bildvisare is designed to work with
+- Bildvisare depends on scripts from this repo for NEF conversion
+
+**NEF-to-JPG conversion:**
+- Python interpreter: `/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3`
+- Conversion script: `/Users/krisniem/dev/hitta_ansikten/nef2jpg.py`
+- These paths are hardcoded in main.js:41-42
+- The script is used to convert Nikon RAW (NEF) files to JPG for display in the slave viewer
 
 ## Development Commands
 
