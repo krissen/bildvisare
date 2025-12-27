@@ -6,8 +6,7 @@ function dlog(...args) {
 }
 dlog("Renderer running. window.location.search:", window.location.search);
 
-const { ipcRenderer } = require("electron");
-const fs = require("fs");
+// SECURITY: No more direct require() - using secure preload bridge
 const container = document.getElementById("bild-container");
 const img = document.getElementById("bild");
 const fallback = document.getElementById("fallback-message");
@@ -56,11 +55,11 @@ waitOverlay.innerHTML = "<div>Waiting for conversion of original…</div>";
 waitOverlay.style.display = "none";
 document.body.appendChild(waitOverlay);
 
-require("electron").ipcRenderer.on("show-wait-overlay", (_e, msg) => {
+window.bildvisareAPI.on("show-wait-overlay", (msg) => {
   waitOverlay.innerHTML = `<div>${msg || "Waiting for conversion of original…"}</div>`;
   waitOverlay.style.display = "flex";
 });
-require("electron").ipcRenderer.on("hide-wait-overlay", () => {
+window.bildvisareAPI.on("hide-wait-overlay", () => {
   waitOverlay.style.display = "none";
 });
 
@@ -145,7 +144,7 @@ if (!bildPath) {
     if (IS_SLAVE && detached) return; // Slave detached: no sync out
     if (suppressSync) return; // avoid loops
     // Proportional scroll (scrollLeft/total, scrollTop/total)
-    ipcRenderer.send("sync-view", {
+    window.bildvisareAPI.send("sync-view", {
       zoom: zoomFactor,
       x: (container.scrollLeft || 0) / Math.max(1, naturalWidth * zoomFactor),
       y: (container.scrollTop || 0) / Math.max(1, naturalHeight * zoomFactor),
@@ -153,7 +152,7 @@ if (!bildPath) {
     });
   }
 
-  ipcRenderer.on("apply-view", (event, { zoom, x, y }) => {
+  window.bildvisareAPI.on("apply-view", ({ zoom, x, y }) => {
     if (IS_SLAVE && detached) return; // ignore sync if detached slave
     suppressSync = true;
     zoomMode = "manual";
@@ -216,7 +215,7 @@ if (!bildPath) {
     naturalWidth = img.naturalWidth;
     naturalHeight = img.naturalHeight;
     updateImageDisplay();
-    if (ipcRenderer) ipcRenderer.send("bild-visad");
+    window.bildvisareAPI.send("bild-visad");
   };
 
   container.addEventListener("scroll", () => {
@@ -321,27 +320,29 @@ if (!bildPath) {
     }
   });
 
-  function reloadIfChanged() {
-    fs.stat(bildPath, (err, stats) => {
-      if (!err && stats.mtimeMs !== lastMtime) {
-        dlog("Image file updated, reloading.");
-        lastMtime = stats.mtimeMs;
-        img.onload = function () {
-          dlog(
-            "img.onload after reload, size:",
-            img.naturalWidth,
-            img.naturalHeight,
-          );
-          naturalWidth = img.naturalWidth;
-          naturalHeight = img.naturalHeight;
-          zoomMode = "auto";
-          zoomFactor = 1;
-          updateImageDisplay();
-          if (ipcRenderer) ipcRenderer.send("bild-visad");
-        };
-        img.src = bildPath + "?t=" + Date.now();
-      }
-    });
+  async function reloadIfChanged() {
+    // SECURITY: Use IPC to check file changes instead of direct fs access
+    const result = await window.bildvisareAPI.checkFileChanged(bildPath);
+
+    if (!result.error && result.mtimeMs !== lastMtime) {
+      dlog("Image file updated, reloading.");
+      lastMtime = result.mtimeMs;
+      img.onload = function () {
+        dlog(
+          "img.onload after reload, size:",
+          img.naturalWidth,
+          img.naturalHeight,
+        );
+        naturalWidth = img.naturalWidth;
+        naturalHeight = img.naturalHeight;
+        zoomMode = "auto";
+        zoomFactor = 1;
+        updateImageDisplay();
+        window.bildvisareAPI.send("bild-visad");
+      };
+      img.src = bildPath + "?t=" + Date.now();
+    }
+
     setTimeout(reloadIfChanged, 1000);
   }
   reloadIfChanged();

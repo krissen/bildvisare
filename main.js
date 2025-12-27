@@ -10,7 +10,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { spawn } = require("child_process");
+const { spawn, exec } = require("child_process");
 
 const statusFilePath = path.join(
   os.homedir(),
@@ -27,6 +27,38 @@ const originalStatusPath = path.join(
   "bildvisare",
   "original_status.json",
 );
+
+// Input validation: ensure file paths are safe
+function isValidImagePath(filePath) {
+  if (!filePath || typeof filePath !== "string") return false;
+
+  try {
+    const resolved = path.resolve(filePath);
+    const home = os.homedir();
+
+    // Only allow paths under user's home directory or /tmp
+    const isUnderHome = resolved.startsWith(home);
+    const isUnderTmp = resolved.startsWith("/tmp") || resolved.startsWith("/private/tmp");
+
+    if (!isUnderHome && !isUnderTmp) {
+      dlog("SECURITY: Rejected path outside allowed directories:", resolved);
+      return false;
+    }
+
+    // Check file extension - only allow image formats
+    const ext = path.extname(resolved).toLowerCase();
+    const allowedExtensions = [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".nef", ".cr2", ".arw"];
+    if (!allowedExtensions.includes(ext)) {
+      dlog("SECURITY: Rejected invalid file extension:", ext);
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    dlog("SECURITY: Path validation error:", e);
+    return false;
+  }
+}
 
 function convertNEFtoJPG(nefPath, outJpg, cb) {
   // Check if JPG already exists and is newer than NEF
@@ -113,6 +145,11 @@ function ensureJPGAndLaunchSlave(status) {
 
 dlog("DEBUG: process.argv =", process.argv);
 let bildFil = process.argv[2] || null;
+// SECURITY: Validate initial bildFil path
+if (bildFil && !isValidImagePath(bildFil)) {
+  dlog("SECURITY: Invalid initial bildFil path, ignoring:", bildFil);
+  bildFil = null;
+}
 dlog("DEBUG: bildFil =", bildFil);
 
 let appStartedAt = new Date().toLocaleString("sv-SE");
@@ -153,6 +190,13 @@ function writeStatus(data = {}) {
 app.on("open-file", (event, filePath) => {
   dlog("open-file-event:", filePath);
   event.preventDefault();
+
+  // SECURITY: Validate file path from open-file event
+  if (!isValidImagePath(filePath)) {
+    dlog("SECURITY: Invalid file path from open-file event:", filePath);
+    return;
+  }
+
   bildFil = filePath;
   updateFileStatus(bildFil);
 
@@ -213,6 +257,22 @@ ipcMain.on("sync-view", (event, data) => {
   }
 });
 
+// SECURITY: Safe file stat checking for renderer (no direct fs access)
+ipcMain.handle("check-file-changed", async (event, filePath) => {
+  // Validate file path first
+  if (!isValidImagePath(filePath)) {
+    dlog("SECURITY: Rejected file stat request for invalid path:", filePath);
+    return { error: "Invalid file path", mtimeMs: 0 };
+  }
+
+  try {
+    const stats = await fs.promises.stat(filePath);
+    return { mtimeMs: stats.mtimeMs };
+  } catch (err) {
+    return { error: err.message, mtimeMs: 0 };
+  }
+});
+
 // ------ Slave instance handling and original_status.json monitoring ------
 
 function readSlaveStatusFile() {
@@ -238,16 +298,22 @@ function launchSlaveViewer(imagePath) {
     return;
   }
   // If already the same, do nothing
+  // SECURITY FIX: Use safe process checking instead of shell command injection
   const isProcessAlive = () => {
     try {
-      const out = require("child_process")
-        .execSync(
-          "pgrep -fl 'Bildvisare.*--slave.*" +
-            imagePath.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1") +
-            "'",
-        )
-        .toString();
-      return out && out.includes(imagePath);
+      // Use ps to list all processes, parse output in JavaScript (no shell injection)
+      const { execSync } = require("child_process");
+      const psOutput = execSync("ps -eo args", { encoding: "utf8" });
+      const lines = psOutput.split("\n");
+
+      // Check if any process matches Bildvisare + --slave + this image path
+      return lines.some((line) => {
+        return (
+          line.includes("Bildvisare") &&
+          line.includes("--slave") &&
+          line.includes(imagePath)
+        );
+      });
     } catch {
       return false;
     }
@@ -348,8 +414,10 @@ function createMasterWindow() {
     height: 600,
     alwaysOnTop: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      // SECURITY FIX: Enable proper isolation
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
     },
     title: "Bildvisare",
   });
@@ -383,8 +451,10 @@ function createSlaveWindow(slaveBildPath) {
     height: 600,
     alwaysOnTop: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      // SECURITY FIX: Enable proper isolation
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
     },
     title: "Bildvisare (original)",
   });
