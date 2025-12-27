@@ -1,32 +1,63 @@
 // main.js
 
 // Logging configuration
-const LOG_LEVEL = process.env.BILDVISARE_LOG_LEVEL || "info"; // debug, info, warn, error
+const LOG_LEVEL = process.env.BILDVISARE_LOG_LEVEL || "debug"; // Always debug in packaged app
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+
+// File logging for packaged app
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+const isDevelopment = process.execPath && process.execPath.includes("node_modules/electron");
+const logFilePath = path.join(os.homedir(), "Library", "Logs", "Bildvisare.log");
+let logStream = null;
+
+if (!isDevelopment) {
+  try {
+    const logDir = path.dirname(logFilePath);
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    logStream = fs.createWriteStream(logFilePath, { flags: "a" });
+    logStream.write(`\n\n=== Bildvisare started at ${new Date().toISOString()} ===\n`);
+  } catch (e) {
+    console.error("Failed to create log file:", e);
+  }
+}
+
+function logToFile(level, ...args) {
+  const timestamp = new Date().toISOString();
+  const message = `${timestamp} [bildvisare:${level}] ${args.join(" ")}\n`;
+  if (logStream) {
+    logStream.write(message);
+  } else {
+    console.log(`[bildvisare:${level}]`, ...args);
+  }
+}
 
 /**
  * Simple logging utility with log levels.
  * Set BILDVISARE_LOG_LEVEL env var to control verbosity.
+ * Packaged app logs to ~/Library/Logs/Bildvisare.log
  */
 const logger = {
   debug: (...args) => {
     if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.debug) {
-      console.log("[bildvisare:debug]", ...args);
+      logToFile("debug", ...args);
     }
   },
   info: (...args) => {
     if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.info) {
-      console.log("[bildvisare:info]", ...args);
+      logToFile("info", ...args);
     }
   },
   warn: (...args) => {
     if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.warn) {
-      console.warn("[bildvisare:warn]", ...args);
+      logToFile("warn", ...args);
     }
   },
   error: (...args) => {
     if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.error) {
-      console.error("[bildvisare:error]", ...args);
+      logToFile("error", ...args);
     }
   },
 };
