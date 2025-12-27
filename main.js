@@ -104,8 +104,19 @@ function isValidImagePath(filePath) {
 
 // NOTE: convertNEFtoJPG and ensureJPGAndLaunchSlave moved to lib/conversion.js
 
+// For slave/secondary instance: passed with --slave or env variable
+const IS_SLAVE =
+  process.argv.includes("--slave") || !!process.env.BILDVISARE_SLAVE;
+
 dlog("DEBUG: process.argv =", process.argv);
-let bildFil = process.argv[2] || null;
+dlog("DEBUG: IS_SLAVE =", IS_SLAVE);
+
+// BUG FIX: Read from correct argv index based on slave mode
+// Master: argv[2] = image path
+// Slave:  argv[2] = --slave, argv[3] = image path
+let bildFil = IS_SLAVE ? process.argv[3] : process.argv[2];
+bildFil = bildFil || null;
+
 // SECURITY: Validate initial bildFil path
 if (bildFil && !isValidImagePath(bildFil)) {
   dlog("SECURITY: Invalid initial bildFil path, ignoring:", bildFil);
@@ -121,10 +132,6 @@ let slaveWindow = null;
 let hasOpenedWindow = false;
 let pendingOpenFile = null;
 let isAppReady = false;
-
-// For slave/secondary instance: passed with --slave or env variable
-const IS_SLAVE =
-  process.argv.includes("--slave") || !!process.env.BILDVISARE_SLAVE;
 let lastSlaveImagePath = null; // To avoid restarting the same slave multiple times
 let slaveProc = null; // Handle secondary instance process
 
