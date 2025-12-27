@@ -1,9 +1,40 @@
 // main.js
 
-const DEBUG = false; // Set to true for debug output
+// Logging configuration
+const LOG_LEVEL = process.env.BILDVISARE_LOG_LEVEL || "info"; // debug, info, warn, error
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 
+/**
+ * Simple logging utility with log levels.
+ * Set BILDVISARE_LOG_LEVEL env var to control verbosity.
+ */
+const logger = {
+  debug: (...args) => {
+    if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.debug) {
+      console.log("[bildvisare:debug]", ...args);
+    }
+  },
+  info: (...args) => {
+    if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.info) {
+      console.log("[bildvisare:info]", ...args);
+    }
+  },
+  warn: (...args) => {
+    if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.warn) {
+      console.warn("[bildvisare:warn]", ...args);
+    }
+  },
+  error: (...args) => {
+    if (LOG_LEVELS[LOG_LEVEL] <= LOG_LEVELS.error) {
+      console.error("[bildvisare:error]", ...args);
+    }
+  },
+};
+
+// Backwards compatibility
+const DEBUG = LOG_LEVEL === "debug";
 function dlog(...args) {
-  if (DEBUG) console.log("[bildvisare]", ...args);
+  logger.debug(...args);
 }
 
 // Configuration constants
@@ -35,7 +66,13 @@ const originalStatusPath = path.join(
   "original_status.json",
 );
 
-// Input validation: ensure file paths are safe
+/**
+ * Validates that a file path is safe to access.
+ * Only allows image files under user's home directory or /tmp.
+ *
+ * @param {string} filePath - The file path to validate
+ * @returns {boolean} True if path is valid and safe, false otherwise
+ */
 function isValidImagePath(filePath) {
   if (!filePath || typeof filePath !== "string") return false;
 
@@ -67,6 +104,14 @@ function isValidImagePath(filePath) {
   }
 }
 
+/**
+ * Converts a Nikon NEF (RAW) file to JPEG format.
+ * Uses external Python script (nef2jpg.py) for conversion.
+ *
+ * @param {string} nefPath - Path to input NEF file
+ * @param {string} outJpg - Path to output JPEG file
+ * @param {Function} cb - Callback(error, outputPath)
+ */
 function convertNEFtoJPG(nefPath, outJpg, cb) {
   // Check if JPG already exists and is newer than NEF
   if (fs.existsSync(outJpg)) {
@@ -82,13 +127,13 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
 
   // ERROR HANDLING: Check if conversion script exists
   if (!fs.existsSync(scriptPath)) {
-    dlog("ERROR: Conversion script not found:", scriptPath);
+    logger.error("Conversion script not found:", scriptPath);
     return cb(new Error("Conversion script not found: " + scriptPath), null);
   }
 
   // ERROR HANDLING: Check if Python interpreter exists
   if (!fs.existsSync(pythonPath)) {
-    dlog("ERROR: Python interpreter not found:", pythonPath);
+    logger.error("Python interpreter not found:", pythonPath);
     return cb(new Error("Python interpreter not found: " + pythonPath), null);
   }
 
@@ -98,7 +143,7 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
 
   // ERROR HANDLING: Handle spawn errors
   child.on("error", (err) => {
-    dlog("ERROR: Failed to spawn conversion process:", err);
+    logger.error("Failed to spawn conversion process:", err);
     cb(new Error("Failed to start conversion: " + err.message), null);
   });
 
@@ -106,7 +151,7 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
     if (code === 0) {
       cb(null, outJpg); // Success: return output file!
     } else {
-      dlog("ERROR: Conversion failed with exit code:", code);
+      logger.error("Conversion failed with exit code:", code);
       cb(new Error("Conversion failed with exit code " + code), null);
     }
   });
@@ -195,6 +240,12 @@ let slaveProc = null; // Handle secondary instance process
 
 dlog("App starting. CLI arguments:", process.argv, "IS_SLAVE:", IS_SLAVE);
 
+/**
+ * Writes application status to JSON file.
+ * Includes app running state, start time, and current file info.
+ *
+ * @param {Object} data - Additional data to merge into status
+ */
 function writeStatus(data = {}) {
   try {
     const dir = path.dirname(statusFilePath);
@@ -214,7 +265,7 @@ function writeStatus(data = {}) {
     );
   } catch (err) {
     // Don't crash app if status file can't be written
-    dlog("WARNING: Failed to write status file:", err.message);
+    logger.warn("Failed to write status file:", err.message);
   }
 }
 
@@ -399,6 +450,12 @@ function readSlaveStatusFile() {
   }
 }
 
+/**
+ * Launches a secondary (slave) viewer window for an image.
+ * Checks if viewer is already running to avoid duplicates.
+ *
+ * @param {string} imagePath - Path to image file to open in slave viewer
+ */
 function launchSlaveViewer(imagePath) {
   dlog("Attempting to start slave viewer for", imagePath);
   if (!imagePath || !fs.existsSync(imagePath)) {
