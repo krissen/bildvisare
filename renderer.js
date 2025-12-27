@@ -4,7 +4,7 @@ const DEBUG = true;
 function dlog(...args) {
   if (DEBUG) console.log("[bildvisare:renderer]", ...args);
 }
-dlog("Renderer körs. window.location.search:", window.location.search);
+dlog("Renderer running. window.location.search:", window.location.search);
 
 const { ipcRenderer } = require("electron");
 const fs = require("fs");
@@ -14,7 +14,7 @@ const fallback = document.getElementById("fallback-message");
 
 const params = new URLSearchParams(window.location.search);
 const IS_SLAVE = params.get("slave") === "1";
-let detached = false; // Slavens frikopplingsläge
+let detached = false; // Slave's detachment mode
 
 let zoomMode = "auto";
 let zoomFactor = 1;
@@ -27,7 +27,7 @@ let lastCursorInImg = false;
 let lastCursorPos = { x: 0, y: 0 };
 let lastMouseClientX = 0;
 let lastMouseClientY = 0;
-let suppressSync = false; // För att undvika loopar vid synkning
+let suppressSync = false; // To avoid loops during syncing
 
 function getBildPath() {
   const val = params.get("bild");
@@ -52,12 +52,12 @@ waitOverlay.style.zIndex = 10000;
 waitOverlay.style.fontSize = "2.2em";
 waitOverlay.style.color = "#fff";
 waitOverlay.style.backdropFilter = "blur(2px)";
-waitOverlay.innerHTML = "<div>Väntar på konvertering av original…</div>";
+waitOverlay.innerHTML = "<div>Waiting for conversion of original…</div>";
 waitOverlay.style.display = "none";
 document.body.appendChild(waitOverlay);
 
 require("electron").ipcRenderer.on("show-wait-overlay", (_e, msg) => {
-  waitOverlay.innerHTML = `<div>${msg || "Väntar på konvertering av original…"}</div>`;
+  waitOverlay.innerHTML = `<div>${msg || "Waiting for conversion of original…"}</div>`;
   waitOverlay.style.display = "flex";
 });
 require("electron").ipcRenderer.on("hide-wait-overlay", () => {
@@ -66,17 +66,17 @@ require("electron").ipcRenderer.on("hide-wait-overlay", () => {
 
 dlog("window.location.search:", window.location.search);
 dlog("getBildPath():", getBildPath());
-dlog("Startar renderer. bildPath:", bildPath);
+dlog("Starting renderer. bildPath:", bildPath);
 
 if (!bildPath) {
-  dlog("Ingen bild – visar fallback-meddelande");
+  dlog("No image – showing fallback message");
   img.style.display = "none";
   fallback.style.display = "block";
 } else {
   img.style.display = "block";
   fallback.style.display = "none";
 
-  dlog("Laddar bild:", bildPath);
+  dlog("Loading image:", bildPath);
 
   img.src = bildPath;
 
@@ -137,14 +137,14 @@ if (!bildPath) {
         });
       }
     }
-    // Skicka sync till andra fönstret
+    // Send sync to other window
     if (!skipSync) syncViewToOther();
   }
 
   function syncViewToOther() {
-    if (IS_SLAVE && detached) return; // Slav frikopplad: ingen sync ut
-    if (suppressSync) return; // undvik loopar
-    // Proportionell scroll (scrollLeft/total, scrollTop/total)
+    if (IS_SLAVE && detached) return; // Slave detached: no sync out
+    if (suppressSync) return; // avoid loops
+    // Proportional scroll (scrollLeft/total, scrollTop/total)
     ipcRenderer.send("sync-view", {
       zoom: zoomFactor,
       x: (container.scrollLeft || 0) / Math.max(1, naturalWidth * zoomFactor),
@@ -154,12 +154,12 @@ if (!bildPath) {
   }
 
   ipcRenderer.on("apply-view", (event, { zoom, x, y }) => {
-    if (IS_SLAVE && detached) return; // ignorera sync om frikopplad slav
+    if (IS_SLAVE && detached) return; // ignore sync if detached slave
     suppressSync = true;
     zoomMode = "manual";
     zoomFactor = zoom;
-    updateImageDisplay(null, false, true); // skipSync: true (undvik loop)
-    // Justera scroll proportionerligt
+    updateImageDisplay(null, false, true); // skipSync: true (avoid loop)
+    // Adjust scroll proportionally
     requestAnimationFrame(() => {
       container.scrollLeft = x * (naturalWidth * zoomFactor);
       container.scrollTop = y * (naturalHeight * zoomFactor);
@@ -212,7 +212,7 @@ if (!bildPath) {
   });
 
   img.onload = function () {
-    dlog("img.onload fired, storlek:", img.naturalWidth, img.naturalHeight);
+    dlog("img.onload fired, size:", img.naturalWidth, img.naturalHeight);
     naturalWidth = img.naturalWidth;
     naturalHeight = img.naturalHeight;
     updateImageDisplay();
@@ -278,10 +278,10 @@ if (!bildPath) {
       updateImageDisplay();
       event.preventDefault();
     } else if (event.key.toLowerCase() === "x" && IS_SLAVE) {
-      // Aktivera/avaktivera frikoppling för slav
+      // Activate/deactivate detachment for slave
       detached = !detached;
-      dlog("Slav frikoppling:", detached);
-      // Enkel overlay om du vill:
+      dlog("Slave detachment:", detached);
+      // Simple overlay if you want:
       let overlay = document.getElementById("detach-overlay");
       if (!overlay) {
         overlay = document.createElement("div");
@@ -298,8 +298,8 @@ if (!bildPath) {
         document.body.appendChild(overlay);
       }
       overlay.textContent = detached
-        ? "Frikopplad från master"
-        : "Synkroniserad med master";
+        ? "Detached from master"
+        : "Synchronized with master";
       overlay.style.display = "block";
       setTimeout(() => {
         if (overlay) overlay.style.display = "none";
@@ -324,11 +324,11 @@ if (!bildPath) {
   function reloadIfChanged() {
     fs.stat(bildPath, (err, stats) => {
       if (!err && stats.mtimeMs !== lastMtime) {
-        dlog("Bildfil uppdaterad, laddar om.");
+        dlog("Image file updated, reloading.");
         lastMtime = stats.mtimeMs;
         img.onload = function () {
           dlog(
-            "img.onload efter reload, storlek:",
+            "img.onload after reload, size:",
             img.naturalWidth,
             img.naturalHeight,
           );
