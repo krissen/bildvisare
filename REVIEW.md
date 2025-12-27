@@ -32,23 +32,28 @@ Comprehensive review of the entire Bildvisare application.
 ## 🟡 MEDIUM - Bugs & Issues
 
 ### Swedish Text Remaining
-- [ ] **index.html:7**: "Ingen bild vald" → English
-- [ ] **main.js:166**: "Skapar nytt fönster" → English
-- [ ] **main.js:169**: "laddar om fönster med bild" → English
-- [ ] **renderer.js:39**: Comment "Skapa overlay-element i DOM" → English
+- [x] **index.html:7**: "Ingen bild vald" → English
+  - ✅ FIXED: "No image selected"
+- [x] **main.js:166**: "Skapar nytt fönster" → English
+  - ✅ FIXED: "Creating new window"
+- [x] **main.js:169**: "laddar om fönster med bild" → English
+  - ✅ FIXED: "Reloading window with image"
+- [x] **renderer.js:39**: Comment "Skapa overlay-element i DOM" → English
+  - ✅ FIXED: "Create overlay element in DOM"
 
 ### Variable Redeclaration (renderer.js)
-- [ ] **Line 28-29 and 185-186**: `lastMouseClientX`, `lastMouseClientY` declared twice
-  - Second declaration shadows first
-  - **Fix**: Remove duplicate declarations
+- [x] **Line 28-29 and 185-186**: `lastMouseClientX`, `lastMouseClientY` declared twice
+  - ✅ FIXED: Removed duplicate declarations
 
 ### Missing Error Handling
-- [ ] **main.js - writeStatus()**: No try/catch around fs.writeFileSync (line 138)
-  - Could crash app if disk full or permissions issue
-  - **Fix**: Add try/catch with error logging
-- [ ] **main.js - convertNEFtoJPG**: Doesn't handle script not found
-- [ ] **main.js - launchSlaveViewer**: spawn() errors not handled
-- [ ] **renderer.js - reloadIfChanged**: fs.stat errors silently ignored
+- [x] **main.js - writeStatus()**: No try/catch around fs.writeFileSync (line 138)
+  - ✅ FIXED: Added try/catch with error logging
+- [x] **main.js - convertNEFtoJPG**: Doesn't handle script not found
+  - ✅ FIXED: Checks for script and Python interpreter, handles spawn errors
+- [x] **main.js - launchSlaveViewer**: spawn() errors not handled
+  - ✅ FIXED: Added error handler for spawn
+- [x] **renderer.js - reloadIfChanged**: fs.stat errors silently ignored
+  - ✅ FIXED: Now uses secure IPC with error handling
 
 ### Race Conditions
 - [ ] **main.js - waitForJPGReady**: Only checks file size (>50KB)
@@ -56,9 +61,12 @@ Comprehensive review of the entire Bildvisare application.
   - **Fix**: Validate file is complete before opening
 
 ### Magic Numbers
-- [ ] Extract constants: 50*1024 (min JPG size), 1500 (poll interval), 1000 (reload interval)
-- [ ] Document zoom factors: 1.07, 10 (max), 0.1 (min)
-- [ ] Document retry counts: 20 retries, 100ms delay
+- [x] Extract constants: 50*1024 (min JPG size), 1500 (poll interval), 1000 (reload interval)
+  - ✅ FIXED: Extracted to main.js constants
+- [x] Document zoom factors: 1.07, 10 (max), 0.1 (min)
+  - ✅ FIXED: Extracted to renderer.js constants
+- [x] Document retry counts: 20 retries, 100ms delay
+  - ✅ FIXED: Extracted to constants with documentation
 
 ## 🟢 LOW - Code Quality
 
@@ -183,11 +191,11 @@ Comprehensive review of the entire Bildvisare application.
 2. ✅ Fix command injection in isProcessAlive
 3. ✅ Add input validation
 
-### Priority 2 - Critical Bugs
-1. Fix variable redeclaration in renderer
-2. Add error handling to fs operations
-3. Fix Swedish text in code
-4. Extract magic numbers to constants
+### Priority 2 - Critical Bugs ✅ COMPLETED
+1. ✅ Fix variable redeclaration in renderer
+2. ✅ Add error handling to fs operations
+3. ✅ Fix Swedish text in code
+4. ✅ Extract magic numbers to constants
 
 ### Priority 3 - Performance
 1. Replace polling with fs.watch
