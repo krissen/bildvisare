@@ -399,13 +399,21 @@ function launchSlaveViewer(imagePath) {
 
   // ERROR HANDLING: Spawn slave viewer with error handling
   // BUG FIX: Pass image path via env var to avoid Electron v36 module loading error
-  const slaveProcess = spawn(appBundlePath, ["--slave"], {
+  logger.debug("Spawning slave with:", { appBundlePath, imagePath });
+
+  // BUG FIX: In development mode, we need to pass the app directory
+  const args = appBundlePath.includes("node_modules/electron")
+    ? [".", "--slave"]  // Development: Pass app directory first
+    : ["--slave"];      // Production: Bundled app doesn't need directory
+
+  const slaveProcess = spawn(appBundlePath, args, {
     detached: true,
-    stdio: "ignore",
+    stdio: process.env.BILDVISARE_LOG_LEVEL === "debug" ? "inherit" : "ignore",
     env: {
       ...process.env,
       BILDVISARE_SLAVE: "1",
-      BILDVISARE_IMAGE_PATH: imagePath  // Pass via env instead of argv
+      BILDVISARE_IMAGE_PATH: imagePath,  // Pass via env instead of argv
+      BILDVISARE_LOG_LEVEL: process.env.BILDVISARE_LOG_LEVEL || "info"
     },
   });
 
@@ -448,7 +456,19 @@ function addSlaveKeybinds(win, isSlave) {
   win.webContents.on("before-input-event", (event, input) => {
     // O = open slave original (with NEF->JPG conversion if needed)
     if (input.type === "keyDown" && input.key.toLowerCase() === "o") {
-      // Check if we have a NEF file (either original or currently viewing)
+      logger.info("'O' key pressed");
+
+      // Try reading status file first (hitta_ansikten workflow)
+      const status = readSlaveStatusFile();
+
+      // Check if we have a valid status file with NEF
+      if (status && status.source_nef && fs.existsSync(status.source_nef)) {
+        logger.info("Using NEF from status file:", status.source_nef);
+        ensureJPGAndLaunchSlave(status, mainWindow, launchSlaveViewer, logger);
+        return;
+      }
+
+      // Fallback: Use current file if it's a NEF (direct NEF opening workflow)
       const nefFile = originalNefPath || bildFil;
 
       // Only allow 'O' when viewing a NEF file (or preview of NEF)
@@ -466,37 +486,18 @@ function addSlaveKeybinds(win, isSlave) {
         return;
       }
 
-      // Create/update status file with the NEF path for conversion
-      logger.info("'O' key pressed - creating status file for NEF:", nefFile);
-      const statusData = {
-        timestamp: Date.now() / 1000,
+      // Convert NEF and launch slave directly
+      logger.info("Using current NEF file:", nefFile);
+      const nefBase = path.basename(nefFile, path.extname(nefFile));
+      const jpgPath = `/tmp/${nefBase}_converted.jpg`;
+
+      const directStatus = {
         source_nef: nefFile,
-        exported_jpg: null,
+        exported_jpg: jpgPath,
         exported: false
       };
 
-      try {
-        const dir = path.dirname(statusFilePath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(statusFilePath, JSON.stringify(statusData, null, 2));
-      } catch (err) {
-        logger.error("Failed to write status file:", err);
-      }
-
-      // Now read status and launch slave
-      const status = readSlaveStatusFile();
-      if (status && status.source_nef) {
-        ensureJPGAndLaunchSlave(status, mainWindow, launchSlaveViewer, logger);
-      } else {
-        logger.warn("No original file found in status");
-        if (win) {
-          win.webContents.send("show-wait-overlay",
-            "No original NEF file found in status.");
-        }
-        setTimeout(() => {
-          if (win) win.webContents.send("hide-wait-overlay");
-        }, 2000);
-      }
+      ensureJPGAndLaunchSlave(directStatus, mainWindow, launchSlaveViewer, logger);
     }
 
     // ESC = close slave instances and close current window (both main and slave)
