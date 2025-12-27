@@ -106,14 +106,21 @@ function isValidImagePath(filePath) {
   try {
     const resolved = path.resolve(filePath);
     const home = os.homedir();
-    const systemTmp = os.tmpdir(); // System temp directory (handles /private/var/folders on macOS)
+    const systemTmp = os.tmpdir(); // System temp directory
 
     // Only allow paths under user's home directory or system temp directory
     const isUnderHome = resolved.startsWith(home);
-    const isUnderTmp = resolved.startsWith("/tmp") || resolved.startsWith("/private/tmp") || resolved.startsWith(systemTmp);
+    // macOS: /var is symlink to /private/var, so check both
+    const isUnderTmp = resolved.startsWith("/tmp") ||
+                       resolved.startsWith("/private/tmp") ||
+                       resolved.startsWith("/var/folders") ||
+                       resolved.startsWith("/private/var/folders") ||
+                       resolved.startsWith(systemTmp);
 
     if (!isUnderHome && !isUnderTmp) {
       dlog("SECURITY: Rejected path outside allowed directories:", resolved);
+      dlog("  Home:", home);
+      dlog("  SystemTmp:", systemTmp);
       return false;
     }
 
