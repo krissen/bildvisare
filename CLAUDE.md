@@ -54,6 +54,20 @@ The application supports a master-slave architecture where:
 - The script converts Nikon RAW (NEF) files to JPG for display in the slave viewer
 - Install dependencies: `pip install rawpy pillow`
 
+**Testing NEF conversion:**
+- Test NEF files available in: `~/Pictures/nerladdat/`
+- Test script directly:
+  ```bash
+  # Basic conversion
+  python3 scripts/nef2jpg.py ~/Pictures/nerladdat/[some-file].NEF /tmp/output.jpg
+
+  # With verbose logging
+  python3 scripts/nef2jpg.py --verbose ~/Pictures/nerladdat/[some-file].NEF /tmp/output.jpg
+
+  # With custom quality
+  python3 scripts/nef2jpg.py --quality 85 ~/Pictures/nerladdat/[some-file].NEF /tmp/output.jpg
+  ```
+
 ## Development Commands
 
 ### Run the app
