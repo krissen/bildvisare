@@ -135,6 +135,7 @@ let pendingOpenFile = null;
 let isAppReady = false;
 let lastSlaveImagePath = null; // To avoid restarting the same slave multiple times
 let slaveProc = null; // Handle secondary instance process
+let originalNefPath = null; // Track original NEF path when showing JPG preview
 
 dlog("App starting. CLI arguments:", process.argv, "IS_SLAVE:", IS_SLAVE);
 
@@ -447,8 +448,11 @@ function addSlaveKeybinds(win, isSlave) {
   win.webContents.on("before-input-event", (event, input) => {
     // O = open slave original (with NEF->JPG conversion if needed)
     if (input.type === "keyDown" && input.key.toLowerCase() === "o") {
-      // Only allow 'O' when viewing a NEF file
-      if (!bildFil || !bildFil.toLowerCase().endsWith('.nef')) {
+      // Check if we have a NEF file (either original or currently viewing)
+      const nefFile = originalNefPath || bildFil;
+
+      // Only allow 'O' when viewing a NEF file (or preview of NEF)
+      if (!nefFile || !nefFile.toLowerCase().endsWith('.nef')) {
         logger.info("'O' key: Only works with NEF files");
         if (win) {
           win.webContents.send("show-wait-overlay",
@@ -462,16 +466,27 @@ function addSlaveKeybinds(win, isSlave) {
         return;
       }
 
+      // Create/update status file with the NEF path for conversion
+      logger.info("'O' key pressed - creating status file for NEF:", nefFile);
+      const statusData = {
+        timestamp: Date.now() / 1000,
+        source_nef: nefFile,
+        exported_jpg: null,
+        exported: false
+      };
+
+      try {
+        const dir = path.dirname(statusFilePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(statusFilePath, JSON.stringify(statusData, null, 2));
+      } catch (err) {
+        logger.error("Failed to write status file:", err);
+      }
+
+      // Now read status and launch slave
       const status = readSlaveStatusFile();
       if (status && status.source_nef) {
         ensureJPGAndLaunchSlave(status, mainWindow, launchSlaveViewer, logger);
-      } else if (
-        status &&
-        status.exported_jpg &&
-        fs.existsSync(status.exported_jpg)
-      ) {
-        // fallback for legacy status
-        launchSlaveViewer(status.exported_jpg);
       } else {
         logger.warn("No original file found in status");
         if (win) {
@@ -531,6 +546,7 @@ function createMasterWindow() {
     // AUTO-CONVERT: If opening a NEF file, convert to JPG first
     if (resolvedBildFil.toLowerCase().endsWith('.nef')) {
       logger.info("Auto-converting NEF to JPG for display:", resolvedBildFil);
+      originalNefPath = resolvedBildFil; // Remember original NEF for 'O' key
       const nefBase = path.basename(resolvedBildFil, path.extname(resolvedBildFil));
       const jpgPath = `/tmp/${nefBase}_preview.jpg`;
 
@@ -556,6 +572,7 @@ function createMasterWindow() {
 
         // Success - reload with JPG
         logger.info("NEF converted, loading JPG:", outJpg);
+        bildFil = outJpg; // Update bildFil to the preview JPG
         mainWindow.loadFile("index.html", {
           query: { bild: encodeURIComponent(outJpg), slave: "0" },
         });
