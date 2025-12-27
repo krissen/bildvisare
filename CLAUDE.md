@@ -24,8 +24,9 @@ The application supports a master-slave architecture where:
 - `main.js` - Electron main process: window management, file watching, NEF conversion, IPC handling
 - `renderer.js` - Renderer process: image display, zoom controls, view synchronization
 - `index.html` - Minimal HTML shell for the image viewer
-- `nef2jpg.py` - Python script for converting Nikon RAW (NEF) files to JPG
 - `package.json` - Project dependencies (Electron only)
+- `scripts/nef2jpg.py` - Python script for converting Nikon RAW (NEF) files to JPG
+- `assets/` - Application assets and resources
 
 ### Key Features
 1. **File Monitoring**: Watches image files and reloads when modified (1-second polling in renderer.js:324-347)
@@ -48,7 +49,7 @@ The application supports a master-slave architecture where:
 
 **Python dependencies for NEF conversion:**
 - Python interpreter: `/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3` (hardcoded in main.js:41)
-- Conversion script: `nef2jpg.py` (located in this repository's root)
+- Conversion script: `scripts/nef2jpg.py` (located in this repository)
 - Required Python packages: `rawpy`, `pillow` (PIL)
 - The script converts Nikon RAW (NEF) files to JPG for display in the slave viewer
 - Install dependencies: `pip install rawpy pillow`

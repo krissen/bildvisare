@@ -39,7 +39,7 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
   }
   // Start conversion
   const pythonPath = "/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3";
-  const scriptPath = path.join(__dirname, "nef2jpg.py");
+  const scriptPath = path.join(__dirname, "scripts", "nef2jpg.py");
 
   const child = spawn(pythonPath, [scriptPath, nefPath, outJpg], {
     stdio: "ignore",
