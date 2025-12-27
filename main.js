@@ -38,9 +38,6 @@ function dlog(...args) {
 }
 
 // Configuration constants
-const MIN_JPG_SIZE = 50 * 1024; // 50KB minimum for converted JPG
-const JPG_READY_CHECK_INTERVAL_MS = 100; // Check every 100ms if JPG is ready
-const JPG_READY_MAX_RETRIES = 20; // Max 20 retries (2 seconds total)
 const STATUS_FILE_POLL_INTERVAL_MS = 1500; // Poll status file every 1.5s
 const STATUS_FILE_INITIAL_DELAY_MS = 2000; // Initial delay before polling
 
@@ -49,6 +46,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { spawn, exec } = require("child_process");
+const { convertNEFtoJPG, ensureJPGAndLaunchSlave } = require("./lib/conversion");
 
 const statusFilePath = path.join(
   os.homedir(),
@@ -104,115 +102,7 @@ function isValidImagePath(filePath) {
   }
 }
 
-/**
- * Converts a Nikon NEF (RAW) file to JPEG format.
- * Uses external Python script (nef2jpg.py) for conversion.
- *
- * @param {string} nefPath - Path to input NEF file
- * @param {string} outJpg - Path to output JPEG file
- * @param {Function} cb - Callback(error, outputPath)
- */
-function convertNEFtoJPG(nefPath, outJpg, cb) {
-  // Check if JPG already exists and is newer than NEF
-  if (fs.existsSync(outJpg)) {
-    const nefTime = fs.statSync(nefPath).mtimeMs;
-    const jpgTime = fs.statSync(outJpg).mtimeMs;
-    if (jpgTime > nefTime) {
-      return cb(null, outJpg); // Already exists, return file path!
-    }
-  }
-  // Start conversion
-  const pythonPath = "/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3";
-  const scriptPath = path.join(__dirname, "scripts", "nef2jpg.py");
-
-  // ERROR HANDLING: Check if conversion script exists
-  if (!fs.existsSync(scriptPath)) {
-    logger.error("Conversion script not found:", scriptPath);
-    return cb(new Error("Conversion script not found: " + scriptPath), null);
-  }
-
-  // ERROR HANDLING: Check if Python interpreter exists
-  if (!fs.existsSync(pythonPath)) {
-    logger.error("Python interpreter not found:", pythonPath);
-    return cb(new Error("Python interpreter not found: " + pythonPath), null);
-  }
-
-  const child = spawn(pythonPath, [scriptPath, nefPath, outJpg], {
-    stdio: "ignore",
-  });
-
-  // ERROR HANDLING: Handle spawn errors
-  child.on("error", (err) => {
-    logger.error("Failed to spawn conversion process:", err);
-    cb(new Error("Failed to start conversion: " + err.message), null);
-  });
-
-  child.on("exit", (code) => {
-    if (code === 0) {
-      cb(null, outJpg); // Success: return output file!
-    } else {
-      logger.error("Conversion failed with exit code:", code);
-      cb(new Error("Conversion failed with exit code " + code), null);
-    }
-  });
-}
-
-function showWaitOverlay() {
-  if (mainWindow) mainWindow.webContents.send("show-wait-overlay");
-}
-function hideWaitOverlay() {
-  if (mainWindow) mainWindow.webContents.send("hide-wait-overlay");
-}
-
-function ensureJPGAndLaunchSlave(status) {
-  let nef = status.source_nef;
-  let jpg = status.exported_jpg;
-  if (!nef) {
-    dlog("No source_nef in status.json!");
-    return;
-  }
-  if (!jpg) {
-    const nefBase = path.basename(nef, path.extname(nef));
-    jpg = `/tmp/${nefBase}_converted.jpg`;
-  }
-  if (
-    fs.existsSync(jpg) &&
-    fs.statSync(jpg).mtimeMs > fs.statSync(nef).mtimeMs
-  ) {
-    launchSlaveViewer(jpg);
-    return;
-  }
-  showWaitOverlay();
-  dlog("Converting NEF to JPG:", nef, "→", jpg);
-  convertNEFtoJPG(nef, jpg, (err, outJpg) => {
-    if (err || !outJpg) {
-      hideWaitOverlay();
-      dlog("Could not convert NEF:", err);
-      if (mainWindow)
-        mainWindow.webContents.send("show-wait-overlay", "Error during export!");
-      return;
-    }
-    function waitForJPGReady(retries = 0) {
-      fs.stat(outJpg, (err, stats) => {
-        if (!err && stats.size > MIN_JPG_SIZE) {
-          hideWaitOverlay();
-          launchSlaveViewer(outJpg);
-        } else if (retries < JPG_READY_MAX_RETRIES) {
-          setTimeout(() => waitForJPGReady(retries + 1), JPG_READY_CHECK_INTERVAL_MS);
-        } else {
-          hideWaitOverlay();
-          dlog("JPG file never became ready to open.");
-          if (mainWindow)
-            mainWindow.webContents.send(
-              "show-wait-overlay",
-              "Error: could not open export!",
-            );
-        }
-      });
-    }
-    waitForJPGReady();
-  });
-}
+// NOTE: convertNEFtoJPG and ensureJPGAndLaunchSlave moved to lib/conversion.js
 
 dlog("DEBUG: process.argv =", process.argv);
 let bildFil = process.argv[2] || null;
@@ -546,7 +436,7 @@ function addSlaveKeybinds(win, isSlave) {
     if (input.type === "keyDown" && input.key.toLowerCase() === "o") {
       const status = readSlaveStatusFile();
       if (status && status.source_nef) {
-        ensureJPGAndLaunchSlave(status);
+        ensureJPGAndLaunchSlave(status, mainWindow, launchSlaveViewer, logger);
       } else if (
         status &&
         status.exported_jpg &&
