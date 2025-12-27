@@ -6,6 +6,13 @@ function dlog(...args) {
 }
 dlog("Renderer running. window.location.search:", window.location.search);
 
+// Configuration constants
+const ZOOM_FACTOR_STEP = 1.07; // Zoom in/out by 7% per step
+const ZOOM_MAX = 10; // Maximum zoom level (10x)
+const ZOOM_MIN = 0.1; // Minimum zoom level (0.1x = 10% of original)
+const ZOOM_INTERVAL_MS = 120; // Continuous zoom every 120ms when key held
+const FILE_RELOAD_CHECK_INTERVAL_MS = 1000; // Check for file changes every 1s
+
 // SECURITY: No more direct require() - using secure preload bridge
 const container = document.getElementById("bild-container");
 const img = document.getElementById("bild");
@@ -24,6 +31,7 @@ let naturalWidth = 0;
 let naturalHeight = 0;
 let lastCursorInImg = false;
 let lastCursorPos = { x: 0, y: 0 };
+// BUG FIX: Declare these variables only once (was duplicated at line 185-186)
 let lastMouseClientX = 0;
 let lastMouseClientY = 0;
 let suppressSync = false; // To avoid loops during syncing
@@ -35,7 +43,7 @@ function getBildPath() {
 const bildPath = getBildPath();
 let lastMtime = 0;
 
-// Skapa overlay-element i DOM
+// Create overlay element in DOM
 const waitOverlay = document.createElement("div");
 waitOverlay.style.position = "fixed";
 waitOverlay.style.left = "0";
@@ -174,15 +182,14 @@ if (!bildPath) {
       zoomMode = "manual";
     }
     if (dir === "in") {
-      zoomFactor = Math.min(zoomFactor * 1.07, 10);
+      zoomFactor = Math.min(zoomFactor * ZOOM_FACTOR_STEP, ZOOM_MAX);
     } else {
-      zoomFactor = Math.max(zoomFactor / 1.07, 0.1);
+      zoomFactor = Math.max(zoomFactor / ZOOM_FACTOR_STEP, ZOOM_MIN);
     }
     updateImageDisplay(center, true);
   }
 
-  let lastMouseClientX = 0,
-    lastMouseClientY = 0;
+  // BUG FIX: Removed duplicate variable declaration (already declared at top)
 
   img.addEventListener("mousemove", (e) => {
     const rect = img.getBoundingClientRect();
@@ -244,7 +251,7 @@ if (!bildPath) {
         if (zoomTimer) clearInterval(zoomTimer);
         zoomTimer = setInterval(() => {
           doZoom("in");
-        }, 120);
+        }, ZOOM_INTERVAL_MS);
       }
       doZoom("in");
       event.preventDefault();
@@ -254,7 +261,7 @@ if (!bildPath) {
         if (zoomTimer) clearInterval(zoomTimer);
         zoomTimer = setInterval(() => {
           doZoom("out");
-        }, 120);
+        }, ZOOM_INTERVAL_MS);
       }
       doZoom("out");
       event.preventDefault();
@@ -343,7 +350,7 @@ if (!bildPath) {
       img.src = bildPath + "?t=" + Date.now();
     }
 
-    setTimeout(reloadIfChanged, 1000);
+    setTimeout(reloadIfChanged, FILE_RELOAD_CHECK_INTERVAL_MS);
   }
   reloadIfChanged();
 

@@ -6,6 +6,13 @@ function dlog(...args) {
   if (DEBUG) console.log("[bildvisare]", ...args);
 }
 
+// Configuration constants
+const MIN_JPG_SIZE = 50 * 1024; // 50KB minimum for converted JPG
+const JPG_READY_CHECK_INTERVAL_MS = 100; // Check every 100ms if JPG is ready
+const JPG_READY_MAX_RETRIES = 20; // Max 20 retries (2 seconds total)
+const STATUS_FILE_POLL_INTERVAL_MS = 1500; // Poll status file every 1.5s
+const STATUS_FILE_INITIAL_DELAY_MS = 2000; // Initial delay before polling
+
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -73,15 +80,34 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
   const pythonPath = "/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3";
   const scriptPath = path.join(__dirname, "scripts", "nef2jpg.py");
 
+  // ERROR HANDLING: Check if conversion script exists
+  if (!fs.existsSync(scriptPath)) {
+    dlog("ERROR: Conversion script not found:", scriptPath);
+    return cb(new Error("Conversion script not found: " + scriptPath), null);
+  }
+
+  // ERROR HANDLING: Check if Python interpreter exists
+  if (!fs.existsSync(pythonPath)) {
+    dlog("ERROR: Python interpreter not found:", pythonPath);
+    return cb(new Error("Python interpreter not found: " + pythonPath), null);
+  }
+
   const child = spawn(pythonPath, [scriptPath, nefPath, outJpg], {
     stdio: "ignore",
+  });
+
+  // ERROR HANDLING: Handle spawn errors
+  child.on("error", (err) => {
+    dlog("ERROR: Failed to spawn conversion process:", err);
+    cb(new Error("Failed to start conversion: " + err.message), null);
   });
 
   child.on("exit", (code) => {
     if (code === 0) {
       cb(null, outJpg); // Success: return output file!
     } else {
-      cb(new Error("Conversion failed"), null);
+      dlog("ERROR: Conversion failed with exit code:", code);
+      cb(new Error("Conversion failed with exit code " + code), null);
     }
   });
 }
@@ -123,11 +149,11 @@ function ensureJPGAndLaunchSlave(status) {
     }
     function waitForJPGReady(retries = 0) {
       fs.stat(outJpg, (err, stats) => {
-        if (!err && stats.size > 50 * 1024) {
+        if (!err && stats.size > MIN_JPG_SIZE) {
           hideWaitOverlay();
           launchSlaveViewer(outJpg);
-        } else if (retries < 20) {
-          setTimeout(() => waitForJPGReady(retries + 1), 100);
+        } else if (retries < JPG_READY_MAX_RETRIES) {
+          setTimeout(() => waitForJPGReady(retries + 1), JPG_READY_CHECK_INTERVAL_MS);
         } else {
           hideWaitOverlay();
           dlog("JPG file never became ready to open.");
@@ -170,21 +196,26 @@ let slaveProc = null; // Handle secondary instance process
 dlog("App starting. CLI arguments:", process.argv, "IS_SLAVE:", IS_SLAVE);
 
 function writeStatus(data = {}) {
-  const dir = path.dirname(statusFilePath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    statusFilePath,
-    JSON.stringify(
-      {
-        app_status: appIsRunning ? "running" : "exited",
-        app_started: appStartedAt,
-        ...currentFileInfo,
-        ...data,
-      },
-      null,
-      2,
-    ),
-  );
+  try {
+    const dir = path.dirname(statusFilePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      statusFilePath,
+      JSON.stringify(
+        {
+          app_status: appIsRunning ? "running" : "exited",
+          app_started: appStartedAt,
+          ...currentFileInfo,
+          ...data,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (err) {
+    // Don't crash app if status file can't be written
+    dlog("WARNING: Failed to write status file:", err.message);
+  }
 }
 
 app.on("open-file", (event, filePath) => {
@@ -207,10 +238,10 @@ app.on("open-file", (event, filePath) => {
   }
 
   if (!hasOpenedWindow) {
-    dlog("open-file: Skapar nytt fönster");
+    dlog("open-file: Creating new window");
     createMasterWindow();
   } else if (mainWindow) {
-    dlog("open-file: laddar om fönster med bild:", bildFil);
+    dlog("open-file: Reloading window with image:", bildFil);
     mainWindow.loadFile("index.html", {
       query: { bild: encodeURIComponent(path.resolve(bildFil)), slave: "0" },
     });
@@ -332,11 +363,19 @@ function launchSlaveViewer(imagePath) {
     .includes(".app/Contents/MacOS")
     ? path.resolve(process.execPath)
     : "/Applications/Bildvisare.app/Contents/MacOS/Bildvisare";
-  spawn(appBundlePath, ["--slave", imagePath], {
+
+  // ERROR HANDLING: Spawn slave viewer with error handling
+  const slaveProcess = spawn(appBundlePath, ["--slave", imagePath], {
     detached: true,
     stdio: "ignore",
     env: { ...process.env, BILDVISARE_SLAVE: "1" },
-  }).unref();
+  });
+
+  slaveProcess.on("error", (err) => {
+    dlog("ERROR: Failed to spawn slave viewer:", err.message);
+  });
+
+  slaveProcess.unref();
 }
 
 // Monitor status file for changes, auto-start slave if requested
@@ -346,7 +385,7 @@ function watchSlaveStatusFile() {
   let lastKnownExported = null;
   function check() {
     const status = readSlaveStatusFile();
-    if (!status) return setTimeout(check, 1500);
+    if (!status) return setTimeout(check, STATUS_FILE_POLL_INTERVAL_MS);
 
     // NEW: check that status file is NEWER than main instance
     if (
@@ -361,9 +400,9 @@ function watchSlaveStatusFile() {
         launchSlaveViewer(status.exported_jpg);
       }
     }
-    setTimeout(check, 1500);
+    setTimeout(check, STATUS_FILE_POLL_INTERVAL_MS);
   }
-  setTimeout(check, 2000);
+  setTimeout(check, STATUS_FILE_INITIAL_DELAY_MS);
 }
 
 // Key commands: O = open slave/secondary, ESC = close slave and own window
