@@ -111,10 +111,11 @@ const IS_SLAVE =
 dlog("DEBUG: process.argv =", process.argv);
 dlog("DEBUG: IS_SLAVE =", IS_SLAVE);
 
-// BUG FIX: Read from correct argv index based on slave mode
-// Master: argv[2] = image path
-// Slave:  argv[2] = --slave, argv[3] = image path
-let bildFil = IS_SLAVE ? process.argv[3] : process.argv[2];
+// BUG FIX: Read image path from environment variable for slave (Electron v36 compatibility)
+// Passing file paths as argv causes ERR_UNKNOWN_FILE_EXTENSION in Electron v36
+// Master: Read from argv[2]
+// Slave:  Read from BILDVISARE_IMAGE_PATH env var
+let bildFil = IS_SLAVE ? process.env.BILDVISARE_IMAGE_PATH : process.argv[2];
 bildFil = bildFil || null;
 
 // SECURITY: Validate initial bildFil path
@@ -396,10 +397,15 @@ function launchSlaveViewer(imagePath) {
     : "/Applications/Bildvisare.app/Contents/MacOS/Bildvisare";
 
   // ERROR HANDLING: Spawn slave viewer with error handling
-  const slaveProcess = spawn(appBundlePath, ["--slave", imagePath], {
+  // BUG FIX: Pass image path via env var to avoid Electron v36 module loading error
+  const slaveProcess = spawn(appBundlePath, ["--slave"], {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, BILDVISARE_SLAVE: "1" },
+    env: {
+      ...process.env,
+      BILDVISARE_SLAVE: "1",
+      BILDVISARE_IMAGE_PATH: imagePath  // Pass via env instead of argv
+    },
   });
 
   slaveProcess.on("error", (err) => {
