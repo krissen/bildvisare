@@ -112,7 +112,7 @@ def validate_output_path(output_path: Path, verbose: bool = False) -> None:
     # Basic safety check: don't allow paths outside /tmp or user directories
     resolved = output_path.resolve()
     home = Path.home()
-    tmp = Path("/tmp")
+    tmp = Path("/tmp").resolve()  # Resolve to handle /private/tmp on macOS
 
     # Check if path is under /tmp or home directory
     try:
