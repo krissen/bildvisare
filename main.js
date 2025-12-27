@@ -550,38 +550,38 @@ function createMasterWindow() {
       const nefBase = path.basename(resolvedBildFil, path.extname(resolvedBildFil));
       const jpgPath = `/tmp/${nefBase}_preview.jpg`;
 
-      // Show wait overlay
-      mainWindow.webContents.once('did-finish-load', () => {
-        mainWindow.webContents.send("show-wait-overlay", "Converting NEF to JPG for preview...");
-      });
-
-      convertNEFtoJPG(resolvedBildFil, jpgPath, (err, outJpg) => {
-        if (err || !outJpg) {
-          logger.error("Failed to convert NEF:", err);
-          mainWindow.webContents.send("show-wait-overlay",
-            "Failed to convert NEF file.<br>Try opening the JPG version instead.");
-          setTimeout(() => {
-            mainWindow.webContents.send("hide-wait-overlay");
-          }, 3000);
-          // Load anyway to show error in UI
-          mainWindow.loadFile("index.html", {
-            query: { bild: "", slave: "0" },
-          });
-          return;
-        }
-
-        // Success - reload with JPG
-        logger.info("NEF converted, loading JPG:", outJpg);
-        bildFil = outJpg; // Update bildFil to the preview JPG
-        mainWindow.loadFile("index.html", {
-          query: { bild: encodeURIComponent(outJpg), slave: "0" },
-        });
-      }, logger);
-
-      // Load index.html first (for overlay to work)
+      // Load index.html first, then show overlay and start conversion
       mainWindow.loadFile("index.html", {
         query: { bild: "", slave: "0" },
       });
+
+      // Wait for page to load, then show overlay and start conversion
+      mainWindow.webContents.once('did-finish-load', () => {
+        mainWindow.webContents.send("show-wait-overlay", "Converting NEF to JPG for preview...");
+
+        // Start conversion after overlay is shown
+        convertNEFtoJPG(resolvedBildFil, jpgPath, (err, outJpg) => {
+          if (err || !outJpg) {
+            logger.error("Failed to convert NEF:", err);
+            mainWindow.webContents.send("show-wait-overlay",
+              "Failed to convert NEF file.<br>Try opening the JPG version instead.");
+            setTimeout(() => {
+              mainWindow.webContents.send("hide-wait-overlay");
+            }, 3000);
+            return;
+          }
+
+          // Success - reload with JPG (page reload will clear overlay)
+          logger.info("NEF converted, loading JPG:", outJpg);
+          bildFil = outJpg; // Update bildFil to the preview JPG
+          mainWindow.loadFile("index.html", {
+            query: { bild: encodeURIComponent(outJpg), slave: "0" },
+          });
+        }, logger);
+      });
+
+      // Register keybinds for NEF preview window
+      addSlaveKeybinds(mainWindow, false);
       return;
     }
 
