@@ -102,17 +102,17 @@ Comprehensive review of the entire Bildvisare application.
 ## ⚡ Performance Issues
 
 ### Polling vs. Watching
-- [ ] **renderer.js:345**: Polls file every 1 second with fs.stat
-  - **Fix**: Use fs.watch() or chokidar
+- [x] **renderer.js:345**: Polls file every 1 second with fs.stat
+  - ✅ FIXED: Now uses fs.watch via IPC with event notifications
 - [ ] **main.js:283,298**: Polls status file every 1.5 seconds
-  - **Fix**: Use fs.watch() for file changes
+  - NOTE: Status file watching kept as polling (inter-process communication)
+  - Alternative would require more complex multi-process coordination
 
 ### Event Handler Optimization
-- [ ] **renderer.js:222**: Scroll event not debounced
-  - Fires sync IPC on every scroll pixel
-  - **Fix**: Debounce with requestAnimationFrame or 16ms delay
-- [ ] **renderer.js:226**: Resize event not debounced
-  - **Fix**: Debounce resize handler
+- [x] **renderer.js:222**: Scroll event not debounced
+  - ✅ FIXED: Debounced to 16ms (~60fps) for smooth performance
+- [x] **renderer.js:226**: Resize event not debounced
+  - ✅ FIXED: Debounced to 100ms
 
 ### Synchronous Operations
 - [ ] Many blocking fs operations: fs.existsSync, fs.statSync, fs.readFileSync
@@ -197,10 +197,10 @@ Comprehensive review of the entire Bildvisare application.
 3. ✅ Fix Swedish text in code
 4. ✅ Extract magic numbers to constants
 
-### Priority 3 - Performance
-1. Replace polling with fs.watch
-2. Debounce scroll/resize events
-3. Use async fs operations
+### Priority 3 - Performance ✅ MOSTLY COMPLETED
+1. ✅ Replace polling with fs.watch
+2. ✅ Debounce scroll/resize events
+3. ⚠️ Use async fs operations (partially - some sync ops remain for simplicity)
 
 ### Priority 4 - Code Quality
 1. Add JSDoc documentation
