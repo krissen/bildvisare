@@ -18,16 +18,23 @@ Exit codes:
     9: File size validation failed
 
 Usage:
-    nef2jpg.py [--verbose] input.NEF output.jpg
+    nef2jpg.py [--verbose] [--quality QUALITY] input.NEF output.jpg
+
+Options:
+    --verbose           Enable detailed logging to stderr
+    --quality QUALITY   JPEG quality (1-100, default: 98)
 """
 import json
 import sys
 import time
 from pathlib import Path
+from typing import Dict, Any, Optional
+import argparse
 
 try:
     import rawpy
     from PIL import Image
+    import numpy as np
 except ImportError:
     print("ERROR: Please install required packages: rawpy and pillow", file=sys.stderr)
     print("Run: pip install rawpy pillow", file=sys.stderr)
@@ -35,19 +42,24 @@ except ImportError:
 
 
 # Configuration constants
-MIN_FILE_SIZE = 1024 * 100  # 100 KB minimum
-MAX_FILE_SIZE = 1024 * 1024 * 100  # 100 MB maximum
-JPEG_QUALITY = 98
-VALID_EXTENSIONS = {'.nef', '.NEF'}
+MIN_FILE_SIZE: int = 1024 * 100  # 100 KB minimum
+MAX_FILE_SIZE: int = 1024 * 1024 * 100  # 100 MB maximum
+DEFAULT_JPEG_QUALITY: int = 98
+VALID_EXTENSIONS: set = {'.nef', '.NEF'}
 
 
-def log_verbose(message, verbose=False):
-    """Print message to stderr if verbose mode is enabled."""
+def log_verbose(message: str, verbose: bool = False) -> None:
+    """Print message to stderr if verbose mode is enabled.
+
+    Args:
+        message: The message to log
+        verbose: Whether verbose mode is enabled
+    """
     if verbose:
         print(f"[INFO] {message}", file=sys.stderr)
 
 
-def validate_nef_file(file_path, verbose=False):
+def validate_nef_file(file_path: Path, verbose: bool = False) -> bool:
     """
     Validate that the input file is a valid NEF file.
 
@@ -56,7 +68,7 @@ def validate_nef_file(file_path, verbose=False):
         verbose: Whether to print verbose messages
 
     Returns:
-        True if valid, False otherwise
+        True if valid
 
     Raises:
         SystemExit with appropriate code if validation fails
@@ -86,7 +98,7 @@ def validate_nef_file(file_path, verbose=False):
     return True
 
 
-def validate_output_path(output_path, verbose=False):
+def validate_output_path(output_path: Path, verbose: bool = False) -> None:
     """
     Validate that the output path is safe to write to.
 
@@ -116,45 +128,34 @@ def validate_output_path(output_path, verbose=False):
     log_verbose(f"Output path validation passed: {resolved}", verbose)
 
 
-def main():
-    """Main conversion function."""
-    # Parse arguments
-    verbose = False
-    args = sys.argv[1:]
+def convert_nef_to_jpeg(
+    nef_path: Path,
+    jpg_path: Path,
+    quality: int = DEFAULT_JPEG_QUALITY,
+    verbose: bool = False
+) -> Dict[str, Any]:
+    """
+    Convert a NEF file to JPEG format.
 
-    if "--verbose" in args:
-        verbose = True
-        args.remove("--verbose")
-        log_verbose("Verbose mode enabled", verbose)
+    Args:
+        nef_path: Path to input NEF file
+        jpg_path: Path to output JPG file
+        quality: JPEG quality (1-100)
+        verbose: Whether to print verbose messages
 
-    if len(args) < 2:
-        print("Usage: nef2jpg.py [--verbose] input.NEF output.jpg", file=sys.stderr)
-        sys.exit(2)
+    Returns:
+        Dictionary with conversion metadata (elapsed_time, output_size, image_shape)
 
-    nef_path = Path(args[0])
-    jpg_path = Path(args[1])
-
-    log_verbose(f"Input file: {nef_path}", verbose)
-    log_verbose(f"Output file: {jpg_path}", verbose)
-
-    # Validate input file exists
-    if not nef_path.exists():
-        print(f"ERROR: File does not exist: {nef_path}", file=sys.stderr)
-        sys.exit(3)
-
-    # Validate input file
-    validate_nef_file(nef_path, verbose)
-
-    # Validate output path
-    validate_output_path(jpg_path, verbose)
-
-    # Read NEF and convert to RGB
+    Raises:
+        SystemExit with appropriate code if conversion fails
+    """
     start_time = time.time()
     log_verbose("Starting NEF conversion...", verbose)
 
+    # Read NEF and convert to RGB
     try:
         with rawpy.imread(str(nef_path)) as raw:
-            rgb = raw.postprocess()
+            rgb: np.ndarray = raw.postprocess()
         log_verbose(f"NEF read successful, image size: {rgb.shape}", verbose)
     except rawpy.LibRawError as e:
         print(f"ERROR: Failed to read NEF file: {e}", file=sys.stderr)
@@ -165,11 +166,11 @@ def main():
         sys.exit(5)
 
     # Convert to JPEG
-    log_verbose(f"Converting to JPEG (quality={JPEG_QUALITY})...", verbose)
+    log_verbose(f"Converting to JPEG (quality={quality})...", verbose)
 
     try:
         img = Image.fromarray(rgb)
-        img.save(jpg_path, format="JPEG", quality=JPEG_QUALITY)
+        img.save(jpg_path, format="JPEG", quality=quality)
 
         # Get output file size
         output_size = jpg_path.stat().st_size
@@ -185,7 +186,26 @@ def main():
     elapsed = time.time() - start_time
     log_verbose(f"Conversion completed in {elapsed:.2f} seconds", verbose)
 
-    # Write status file
+    return {
+        "elapsed_time": elapsed,
+        "output_size": output_size,
+        "image_shape": rgb.shape
+    }
+
+
+def write_status_file(
+    nef_path: Path,
+    jpg_path: Path,
+    verbose: bool = False
+) -> None:
+    """
+    Write status file for Bildvisare application.
+
+    Args:
+        nef_path: Path to source NEF file
+        jpg_path: Path to exported JPG file
+        verbose: Whether to print verbose messages
+    """
     log_verbose("Writing status file...", verbose)
 
     status_path = (
@@ -195,7 +215,7 @@ def main():
         / "bildvisare"
         / "original_status.json"
     )
-    status = {
+    status: Dict[str, Any] = {
         "timestamp": time.time(),
         "source_nef": str(nef_path),
         "exported_jpg": str(jpg_path),
@@ -214,6 +234,82 @@ def main():
     except Exception as e:
         print(f"WARNING: Unexpected error writing status: {e}", file=sys.stderr)
         # Don't exit with error - conversion was successful
+
+
+def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+
+    Returns:
+        Parsed arguments namespace
+    """
+    parser = argparse.ArgumentParser(
+        description="Convert Nikon NEF files to JPEG format",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+    parser.add_argument(
+        "input_nef",
+        type=Path,
+        help="Input NEF file path"
+    )
+    parser.add_argument(
+        "output_jpg",
+        type=Path,
+        help="Output JPG file path"
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging to stderr"
+    )
+    parser.add_argument(
+        "--quality",
+        type=int,
+        default=DEFAULT_JPEG_QUALITY,
+        metavar="QUALITY",
+        help=f"JPEG quality 1-100 (default: {DEFAULT_JPEG_QUALITY})"
+    )
+
+    args = parser.parse_args()
+
+    # Validate quality range
+    if not 1 <= args.quality <= 100:
+        parser.error(f"Quality must be between 1 and 100, got: {args.quality}")
+
+    return args
+
+
+def main() -> None:
+    """Main conversion function."""
+    args = parse_arguments()
+
+    nef_path: Path = args.input_nef
+    jpg_path: Path = args.output_jpg
+    verbose: bool = args.verbose
+    quality: int = args.quality
+
+    log_verbose("Verbose mode enabled", verbose)
+    log_verbose(f"Input file: {nef_path}", verbose)
+    log_verbose(f"Output file: {jpg_path}", verbose)
+    log_verbose(f"JPEG quality: {quality}", verbose)
+
+    # Validate input file exists
+    if not nef_path.exists():
+        print(f"ERROR: File does not exist: {nef_path}", file=sys.stderr)
+        sys.exit(3)
+
+    # Validate input file
+    validate_nef_file(nef_path, verbose)
+
+    # Validate output path
+    validate_output_path(jpg_path, verbose)
+
+    # Convert NEF to JPEG
+    conversion_info = convert_nef_to_jpeg(nef_path, jpg_path, quality, verbose)
+
+    # Write status file
+    write_status_file(nef_path, jpg_path, verbose)
 
 
 if __name__ == "__main__":
