@@ -58,6 +58,19 @@ npx electron-packager . Bildvisare --platform=darwin --arch=x64,arm64 --overwrit
 npx electron . /path/to/image.jpg
 ```
 
+## Git Workflow
+
+**IMPORTANT:** The `master` branch is locked for direct pushes. All changes must be made through the `dev` branch and pull requests.
+
+### Standard workflow:
+1. Make changes on the `dev` branch
+2. Commit changes to `dev`
+3. Push to `dev`
+4. Create a pull request from `dev` to `master`
+5. Merge after review
+
+Never attempt to push directly to `master`.
+
 ## Key Keyboard Controls
 
 Implemented in both main.js and renderer.js:
