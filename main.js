@@ -1,6 +1,6 @@
 // main.js
 
-const DEBUG = false; // Sätt till true för debugutskrifter
+const DEBUG = false; // Set to true for debug output
 
 function dlog(...args) {
   if (DEBUG) console.log("[bildvisare]", ...args);
@@ -29,7 +29,7 @@ const originalStatusPath = path.join(
 );
 
 function convertNEFtoJPG(nefPath, outJpg, cb) {
-  // Kolla om JPG redan finns och är nyare än NEF
+  // Check if JPG already exists and is newer than NEF
   if (fs.existsSync(outJpg)) {
     const nefTime = fs.statSync(nefPath).mtimeMs;
     const jpgTime = fs.statSync(outJpg).mtimeMs;
@@ -37,7 +37,7 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
       return cb(null, outJpg); // Already exists, return file path!
     }
   }
-  // Starta konvertering
+  // Start conversion
   const pythonPath = "/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3";
   const scriptPath = "/Users/krisniem/dev/hitta_ansikten/nef2jpg.py";
 
@@ -49,7 +49,7 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
     if (code === 0) {
       cb(null, outJpg); // Success: return output file!
     } else {
-      cb(new Error("Konverteringen misslyckades"), null);
+      cb(new Error("Conversion failed"), null);
     }
   });
 }
@@ -65,7 +65,7 @@ function ensureJPGAndLaunchSlave(status) {
   let nef = status.source_nef;
   let jpg = status.exported_jpg;
   if (!nef) {
-    dlog("Ingen source_nef i status.json!");
+    dlog("No source_nef in status.json!");
     return;
   }
   if (!jpg) {
@@ -80,13 +80,13 @@ function ensureJPGAndLaunchSlave(status) {
     return;
   }
   showWaitOverlay();
-  dlog("Konverterar NEF till JPG:", nef, "→", jpg);
+  dlog("Converting NEF to JPG:", nef, "→", jpg);
   convertNEFtoJPG(nef, jpg, (err, outJpg) => {
     if (err || !outJpg) {
       hideWaitOverlay();
-      dlog("Kunde inte konvertera NEF:", err);
+      dlog("Could not convert NEF:", err);
       if (mainWindow)
-        mainWindow.webContents.send("show-wait-overlay", "Fel vid export!");
+        mainWindow.webContents.send("show-wait-overlay", "Error during export!");
       return;
     }
     function waitForJPGReady(retries = 0) {
@@ -98,11 +98,11 @@ function ensureJPGAndLaunchSlave(status) {
           setTimeout(() => waitForJPGReady(retries + 1), 100);
         } else {
           hideWaitOverlay();
-          dlog("JPG-fil blev aldrig klar att öppnas.");
+          dlog("JPG file never became ready to open.");
           if (mainWindow)
             mainWindow.webContents.send(
               "show-wait-overlay",
-              "Fel: kunde inte öppna exporten!",
+              "Error: could not open export!",
             );
         }
       });
@@ -124,13 +124,13 @@ let hasOpenedWindow = false;
 let pendingOpenFile = null;
 let isAppReady = false;
 
-// För slav-/sekundärinstans: skickas med --slave eller env-variabel
+// For slave/secondary instance: passed with --slave or env variable
 const IS_SLAVE =
   process.argv.includes("--slave") || !!process.env.BILDVISARE_SLAVE;
-let lastSlaveImagePath = null; // För att undvika att starta om samma slav flera gånger
-let slaveProc = null; // Hantera sekundärinstansprocessen
+let lastSlaveImagePath = null; // To avoid restarting the same slave multiple times
+let slaveProc = null; // Handle secondary instance process
 
-dlog("App startar. CLI-argument:", process.argv, "IS_SLAVE:", IS_SLAVE);
+dlog("App starting. CLI arguments:", process.argv, "IS_SLAVE:", IS_SLAVE);
 
 function writeStatus(data = {}) {
   const dir = path.dirname(statusFilePath);
@@ -176,7 +176,7 @@ writeStatus();
 
 app.on("will-quit", () => {
   appIsRunning = false;
-  dlog("Appen stängs (will-quit)");
+  dlog("App closing (will-quit)");
   writeStatus();
 });
 
@@ -197,15 +197,15 @@ function updateFileViewed() {
   writeStatus();
 }
 
-// ----- IPC från renderer
+// ----- IPC from renderer
 ipcMain.on("bild-visad", () => {
-  dlog("IPC: bild-visad från renderer");
+  dlog("IPC: bild-visad from renderer");
   updateFileViewed();
 });
 
-// Synkronisera vyer mellan master och slav
+// Synchronize views between master and slave
 ipcMain.on("sync-view", (event, data) => {
-  // Skicka vidare till andra fönstret
+  // Forward to other window
   if (event.sender === mainWindow?.webContents && slaveWindow) {
     slaveWindow.webContents.send("apply-view", data);
   } else if (event.sender === slaveWindow?.webContents && mainWindow) {
@@ -213,7 +213,7 @@ ipcMain.on("sync-view", (event, data) => {
   }
 });
 
-// ------ Hantering av slavinstans och övervakning av original_status.json ------
+// ------ Slave instance handling and original_status.json monitoring ------
 
 function readSlaveStatusFile() {
   if (!fs.existsSync(originalStatusPath)) return null;
@@ -226,18 +226,18 @@ function readSlaveStatusFile() {
       fileMTime: stat.mtimeMs,
     };
   } catch (e) {
-    dlog("Fel vid läsning av slavstatusfil:", e);
+    dlog("Error reading slave status file:", e);
     return null;
   }
 }
 
 function launchSlaveViewer(imagePath) {
-  dlog("Försöker starta slavvisning för", imagePath);
+  dlog("Attempting to start slave viewer for", imagePath);
   if (!imagePath || !fs.existsSync(imagePath)) {
-    dlog("Filen finns ej:", imagePath);
+    dlog("File does not exist:", imagePath);
     return;
   }
-  // Om redan samma, gör inget
+  // If already the same, do nothing
   const isProcessAlive = () => {
     try {
       const out = require("child_process")
@@ -253,14 +253,14 @@ function launchSlaveViewer(imagePath) {
     }
   };
   if (lastSlaveImagePath === imagePath && isProcessAlive()) {
-    dlog("Slavvisning för denna bild är redan igång:", imagePath);
+    dlog("Slave viewer for this image is already running:", imagePath);
     return;
   }
   lastSlaveImagePath = imagePath;
 
-  // Starta via open -a Bildvisare "bild"
-  dlog("Kör: open -a Bildvisare", imagePath);
-  // Vi skickar med --slave så man kan särskilja
+  // Start via open -a Bildvisare "image"
+  dlog("Running: open -a Bildvisare", imagePath);
+  // We pass --slave to distinguish
   const appBundlePath = path
     .dirname(process.execPath)
     .includes(".app/Contents/MacOS")
@@ -273,7 +273,7 @@ function launchSlaveViewer(imagePath) {
   }).unref();
 }
 
-// Övervaka statusfil för ändring, auto-starta slav om begärt
+// Monitor status file for changes, auto-start slave if requested
 let mainStartedAt = Date.now();
 function watchSlaveStatusFile() {
   let lastKnownMtime = 0;
@@ -282,7 +282,7 @@ function watchSlaveStatusFile() {
     const status = readSlaveStatusFile();
     if (!status) return setTimeout(check, 1500);
 
-    // NYTT: kontrollera att statusfilen är NYARE än huvudinstansen
+    // NEW: check that status file is NEWER than main instance
     if (
       status.fileMTime > mainStartedAt &&
       (status.fileMTime !== lastKnownMtime ||
@@ -290,7 +290,7 @@ function watchSlaveStatusFile() {
     ) {
       lastKnownMtime = status.fileMTime;
       lastKnownExported = status.exported_jpg;
-      dlog("Upptäckt ny/ändrad slavstatusfil:", status.exported_jpg);
+      dlog("Detected new/changed slave status file:", status.exported_jpg);
       if (status.exported_jpg && fs.existsSync(status.exported_jpg)) {
         launchSlaveViewer(status.exported_jpg);
       }
@@ -300,10 +300,10 @@ function watchSlaveStatusFile() {
   setTimeout(check, 2000);
 }
 
-// Nyckelkommandon: O = öppna slav/sekundär, ESC = stäng slav och eget fönster
+// Key commands: O = open slave/secondary, ESC = close slave and own window
 function addSlaveKeybinds(win, isSlave) {
   win.webContents.on("before-input-event", (event, input) => {
-    // O = öppna slav original (med NEF->JPG-konvertering vid behov)
+    // O = open slave original (with NEF->JPG conversion if needed)
     if (input.type === "keyDown" && input.key.toLowerCase() === "o") {
       const status = readSlaveStatusFile();
       if (status && status.source_nef) {
@@ -313,30 +313,30 @@ function addSlaveKeybinds(win, isSlave) {
         status.exported_jpg &&
         fs.existsSync(status.exported_jpg)
       ) {
-        // fallback för legacy status
+        // fallback for legacy status
         launchSlaveViewer(status.exported_jpg);
       }
     }
 
-    // ESC = stäng slavinstanser och stäng nuvarande fönster (både huvud och slav)
+    // ESC = close slave instances and close current window (both main and slave)
     if (input.type === "keyDown" && input.key === "Escape") {
-      dlog("Keybind ESC: försöker stänga slavinstanser via pkill");
+      dlog("Keybind ESC: attempting to close slave instances via pkill");
       spawn("pkill", ["-f", "--", "Bildvisare.*--slave"], {
         detached: true,
         stdio: "ignore",
       });
-      win.close(); // Stäng även nuvarande fönster (huvud eller slav)
+      win.close(); // Also close current window (main or slave)
     }
-    // q = stänger fönster (finns redan)
+    // q = closes window (already exists)
     if (input.type === "keyDown" && input.key.toLowerCase() === "q") {
       win.close();
     }
   });
 }
 
-// ----- Fönster -----
+// ----- Windows -----
 function createMasterWindow() {
-  dlog("createMasterWindow:", bildFil ? bildFil : "(ingen bild)");
+  dlog("createMasterWindow:", bildFil ? bildFil : "(no image)");
   if (mainWindow) {
     try {
       mainWindow.destroy();
@@ -359,19 +359,19 @@ function createMasterWindow() {
   const resolvedBildFil = bildFil ? path.resolve(bildFil) : null;
   if (resolvedBildFil) {
     updateFileStatus(resolvedBildFil);
-    dlog("Fönster laddas med bild:", resolvedBildFil);
+    dlog("Window loading with image:", resolvedBildFil);
     mainWindow.loadFile("index.html", {
       query: { bild: encodeURIComponent(resolvedBildFil), slave: "0" },
     });
   } else {
-    dlog("Fönster laddas utan bild");
+    dlog("Window loading without image:");
     mainWindow.loadFile("index.html", { query: { bild: "", slave: "0" } });
   }
   addSlaveKeybinds(mainWindow, false);
 }
 
 function createSlaveWindow(slaveBildPath) {
-  dlog("createSlaveWindow:", slaveBildPath ? slaveBildPath : "(ingen bild)");
+  dlog("createSlaveWindow:", slaveBildPath ? slaveBildPath : "(no image)");
   if (slaveWindow) {
     try {
       slaveWindow.destroy();
@@ -392,12 +392,12 @@ function createSlaveWindow(slaveBildPath) {
 
   const resolvedBildFil = slaveBildPath ? path.resolve(slaveBildPath) : null;
   if (resolvedBildFil) {
-    dlog("Slavfönster laddas med bild:", resolvedBildFil);
+    dlog("Slave window loading with image:", resolvedBildFil);
     slaveWindow.loadFile("index.html", {
       query: { bild: encodeURIComponent(resolvedBildFil), slave: "1" },
     });
   } else {
-    dlog("Slavfönster laddas utan bild");
+    dlog("Slave window loading without image:");
     slaveWindow.loadFile("index.html", { query: { bild: "", slave: "1" } });
   }
   addSlaveKeybinds(slaveWindow, true);
@@ -407,7 +407,7 @@ function createSlaveWindow(slaveBildPath) {
   });
 }
 
-// Anpassa så slavfönster skapas direkt om IS_SLAVE
+// Adapt so slave window is created directly if IS_SLAVE
 function createWindow() {
   if (IS_SLAVE) {
     createSlaveWindow(bildFil);
@@ -420,12 +420,12 @@ app.whenReady().then(() => {
   isAppReady = true;
   dlog("app.whenReady triggered, IS_SLAVE:", IS_SLAVE);
   if (!IS_SLAVE) {
-    // Endast huvudinstans övervakar statusfil för slavvisning
+    // Only main instance monitors status file for slave viewing
     watchSlaveStatusFile();
   }
   if (pendingOpenFile) {
     bildFil = pendingOpenFile;
-    dlog("Kör createWindow() med pendingOpenFile:", bildFil);
+    dlog("Running createWindow() with pendingOpenFile:", bildFil);
     createWindow();
     pendingOpenFile = null;
   } else {
