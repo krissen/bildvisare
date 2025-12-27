@@ -1,14 +1,21 @@
 // main.js
 
-// Logging configuration
+// Logging configuration - logger and dlog defined after requires below
 const LOG_LEVEL = process.env.BILDVISARE_LOG_LEVEL || "debug"; // Always debug in packaged app
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
 
-// File logging for packaged app
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+// Configuration constants
+const STATUS_FILE_POLL_INTERVAL_MS = 1500; // Poll status file every 1.5s
+const STATUS_FILE_INITIAL_DELAY_MS = 2000; // Initial delay before polling
 
+const { app, BrowserWindow, ipcMain } = require("electron");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const { spawn, exec } = require("child_process");
+const { convertNEFtoJPG, ensureJPGAndLaunchSlave } = require("./lib/conversion");
+
+// File logging for packaged app
 const isDevelopment = process.execPath && process.execPath.includes("node_modules/electron");
 const logFilePath = path.join(os.homedir(), "Library", "Logs", "Bildvisare.log");
 let logStream = null;
@@ -67,17 +74,6 @@ const DEBUG = LOG_LEVEL === "debug";
 function dlog(...args) {
   logger.debug(...args);
 }
-
-// Configuration constants
-const STATUS_FILE_POLL_INTERVAL_MS = 1500; // Poll status file every 1.5s
-const STATUS_FILE_INITIAL_DELAY_MS = 2000; // Initial delay before polling
-
-const { app, BrowserWindow, ipcMain } = require("electron");
-const path = require("path");
-const fs = require("fs");
-const os = require("os");
-const { spawn, exec } = require("child_process");
-const { convertNEFtoJPG, ensureJPGAndLaunchSlave } = require("./lib/conversion");
 
 const statusFilePath = path.join(
   os.homedir(),
