@@ -38,7 +38,7 @@ function convertNEFtoJPG(nefPath, outJpg, cb) {
     }
   }
   // Starta konvertering
-  const pythonPath = "/Users/krisniem/miniforge3/envs/faceid/bin/python3";
+  const pythonPath = "/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3";
   const scriptPath = "/Users/krisniem/dev/hitta_ansikten/nef2jpg.py";
 
   const child = spawn(pythonPath, [scriptPath, nefPath, outJpg], {
