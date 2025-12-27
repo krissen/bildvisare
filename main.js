@@ -173,6 +173,8 @@ let isAppReady = false;
 let lastSlaveImagePath = null; // To avoid restarting the same slave multiple times
 let slaveProc = null; // Handle secondary instance process
 let originalNefPath = null; // Track original NEF path when showing JPG preview
+// Track spawned slaves: Map of imagePath -> timestamp
+const spawnedSlaves = new Map();
 
 dlog("App starting. CLI arguments:", process.argv, "IS_SLAVE:", IS_SLAVE);
 
@@ -398,32 +400,33 @@ function launchSlaveViewer(imagePath) {
     dlog("File does not exist:", imagePath);
     return;
   }
-  // If already the same, do nothing
-  // SECURITY FIX: Use safe process checking instead of shell command injection
-  const isProcessAlive = () => {
-    try {
-      // Use ps to list all processes, parse output in JavaScript (no shell injection)
-      const { execSync } = require("child_process");
-      const psOutput = execSync("ps -eo args", { encoding: "utf8" });
-      const lines = psOutput.split("\n");
 
-      // Check if any process matches Bildvisare + --slave + this image path
-      return lines.some((line) => {
-        return (
-          line.includes("Bildvisare") &&
-          line.includes("--slave") &&
-          line.includes(imagePath)
-        );
-      });
-    } catch {
-      return false;
+  // Check if we recently spawned a slave for this image (within last 5 seconds)
+  const now = Date.now();
+  const SLAVE_SPAWN_COOLDOWN_MS = 5000; // 5 seconds
+
+  if (spawnedSlaves.has(imagePath)) {
+    const spawnTime = spawnedSlaves.get(imagePath);
+    const elapsed = now - spawnTime;
+    if (elapsed < SLAVE_SPAWN_COOLDOWN_MS) {
+      dlog("Slave viewer for this image was recently spawned:", imagePath,
+           `(${elapsed}ms ago, cooldown: ${SLAVE_SPAWN_COOLDOWN_MS}ms)`);
+      return;
     }
-  };
-  if (lastSlaveImagePath === imagePath && isProcessAlive()) {
-    dlog("Slave viewer for this image is already running:", imagePath);
-    return;
+    // Cooldown expired, remove old entry
+    spawnedSlaves.delete(imagePath);
   }
+
+  // Record spawn time
+  spawnedSlaves.set(imagePath, now);
   lastSlaveImagePath = imagePath;
+
+  // Clean up old entries (older than cooldown period)
+  for (const [path, time] of spawnedSlaves.entries()) {
+    if (now - time > SLAVE_SPAWN_COOLDOWN_MS) {
+      spawnedSlaves.delete(path);
+    }
+  }
 
   // Start via open -a Bildvisare "image"
   dlog("Running: open -a Bildvisare", imagePath);
@@ -478,9 +481,17 @@ function watchSlaveStatusFile() {
     ) {
       lastKnownMtime = status.fileMTime;
       lastKnownExported = status.exported_jpg;
-      dlog("Detected new/changed slave status file:", status.exported_jpg);
-      if (status.exported_jpg && fs.existsSync(status.exported_jpg)) {
-        launchSlaveViewer(status.exported_jpg);
+
+      // IGNORE internal bildvisare conversions (_preview.jpg and _converted.jpg)
+      // These are handled by the app itself, not the status file poller
+      const filename = path.basename(status.exported_jpg || "");
+      if (filename.endsWith("_preview.jpg") || filename.endsWith("_converted.jpg")) {
+        dlog("Ignoring internal conversion file:", status.exported_jpg);
+      } else {
+        dlog("Detected new/changed slave status file:", status.exported_jpg);
+        if (status.exported_jpg && fs.existsSync(status.exported_jpg)) {
+          launchSlaveViewer(status.exported_jpg);
+        }
       }
     }
     setTimeout(check, STATUS_FILE_POLL_INTERVAL_MS);
