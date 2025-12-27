@@ -16,19 +16,21 @@ const { spawn, exec } = require("child_process");
 const { convertNEFtoJPG, ensureJPGAndLaunchSlave } = require("./lib/conversion");
 
 // File logging for packaged app
-const isDevelopment = process.execPath && process.execPath.includes("node_modules/electron");
+const isPackaged = !process.execPath.includes("node_modules/electron") && !process.execPath.includes("/dev/bildvisare");
 const logFilePath = path.join(os.homedir(), "Library", "Logs", "Bildvisare.log");
 let logStream = null;
 
-if (!isDevelopment) {
-  try {
-    const logDir = path.dirname(logFilePath);
-    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-    logStream = fs.createWriteStream(logFilePath, { flags: "a" });
-    logStream.write(`\n\n=== Bildvisare started at ${new Date().toISOString()} ===\n`);
-  } catch (e) {
-    console.error("Failed to create log file:", e);
-  }
+// Always try to create log file - fallback to console if it fails
+try {
+  const logDir = path.dirname(logFilePath);
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  logStream = fs.createWriteStream(logFilePath, { flags: "a" });
+  const startMsg = `\n\n=== Bildvisare started at ${new Date().toISOString()} (packaged: ${isPackaged}, execPath: ${process.execPath}) ===\n`;
+  logStream.write(startMsg);
+  if (!isPackaged) console.log(startMsg.trim()); // Also log to console in dev
+} catch (e) {
+  console.error("Failed to create log file:", e);
+  logStream = null; // Ensure we fall back to console
 }
 
 function logToFile(level, ...args) {
@@ -104,10 +106,11 @@ function isValidImagePath(filePath) {
   try {
     const resolved = path.resolve(filePath);
     const home = os.homedir();
+    const systemTmp = os.tmpdir(); // System temp directory (handles /private/var/folders on macOS)
 
-    // Only allow paths under user's home directory or /tmp
+    // Only allow paths under user's home directory or system temp directory
     const isUnderHome = resolved.startsWith(home);
-    const isUnderTmp = resolved.startsWith("/tmp") || resolved.startsWith("/private/tmp");
+    const isUnderTmp = resolved.startsWith("/tmp") || resolved.startsWith("/private/tmp") || resolved.startsWith(systemTmp);
 
     if (!isUnderHome && !isUnderTmp) {
       dlog("SECURITY: Rejected path outside allowed directories:", resolved);
