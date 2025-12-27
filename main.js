@@ -447,6 +447,21 @@ function addSlaveKeybinds(win, isSlave) {
   win.webContents.on("before-input-event", (event, input) => {
     // O = open slave original (with NEF->JPG conversion if needed)
     if (input.type === "keyDown" && input.key.toLowerCase() === "o") {
+      // Only allow 'O' when viewing a NEF file
+      if (!bildFil || !bildFil.toLowerCase().endsWith('.nef')) {
+        logger.info("'O' key: Only works with NEF files");
+        if (win) {
+          win.webContents.send("show-wait-overlay",
+            "Press 'O' only works with NEF files.<br>Currently viewing: " +
+            (bildFil ? path.basename(bildFil) : "no file"));
+        }
+        // Auto-hide after 2 seconds
+        setTimeout(() => {
+          if (win) win.webContents.send("hide-wait-overlay");
+        }, 2000);
+        return;
+      }
+
       const status = readSlaveStatusFile();
       if (status && status.source_nef) {
         ensureJPGAndLaunchSlave(status, mainWindow, launchSlaveViewer, logger);
@@ -457,6 +472,15 @@ function addSlaveKeybinds(win, isSlave) {
       ) {
         // fallback for legacy status
         launchSlaveViewer(status.exported_jpg);
+      } else {
+        logger.warn("No original file found in status");
+        if (win) {
+          win.webContents.send("show-wait-overlay",
+            "No original NEF file found in status.");
+        }
+        setTimeout(() => {
+          if (win) win.webContents.send("hide-wait-overlay");
+        }, 2000);
       }
     }
 
