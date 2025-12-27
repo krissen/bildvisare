@@ -100,7 +100,8 @@ if (!bildPath) {
 
   dlog("Loading image:", bildPath);
 
-  img.src = bildPath;
+  // SECURITY FIX: Use file:// protocol for Electron v36+ with contextIsolation
+  img.src = bildPath.startsWith('file://') ? bildPath : 'file://' + bildPath;
 
   function getFitZoomFactor() {
     const winW = window.innerWidth;
@@ -361,7 +362,9 @@ if (!bildPath) {
         updateImageDisplay();
         window.bildvisareAPI.send("bild-visad");
       };
-      img.src = bildPath + "?t=" + Date.now();
+      // SECURITY FIX: Use file:// protocol for Electron v36+ with contextIsolation
+      const fileUrl = bildPath.startsWith('file://') ? bildPath : 'file://' + bildPath;
+      img.src = fileUrl + "?t=" + Date.now();
     }
   });
 
