@@ -24,23 +24,34 @@
 - Added helpful error messages for each failure scenario
 - Status file write failures are now warnings (conversion still succeeds)
 
-## Prioritet 2 - Rekommenderat
+## Prioritet 2 - Rekommenderat ✅ COMPLETED
 
 ### Validering
-- [ ] Validera att input-fil har .NEF eller .nef extension
-- [ ] Validera att output-path är säker (inte systemfiler)
-- [ ] Lägg till check för min/max filstorlek
+- [x] Validera att input-fil har .NEF eller .nef extension
+- [x] Validera att output-path är säker (inte systemfiler)
+- [x] Lägg till check för min/max filstorlek
 
 ### Dokumentation
-- [ ] Lägg till module-level docstring
-- [ ] Lägg till docstring för `main()` funktion
-- [ ] Dokumentera exit codes (0=success, 1=import error, 2=usage error, 3=file not found, etc.)
-- [ ] Lägg till kommentarer för varje större kodblock
+- [x] Lägg till module-level docstring
+- [x] Lägg till docstring för `main()` funktion
+- [x] Dokumentera exit codes (0=success, 1=import error, 2=usage error, 3=file not found, etc.)
+- [x] Lägg till kommentarer för varje större kodblock
 
 ### Logging
-- [ ] Lägg till optional verbose mode (`--verbose` flag)
-- [ ] Logga conversion start/end timestamps
-- [ ] Logga filstorlekar (input NEF, output JPG)
+- [x] Lägg till optional verbose mode (`--verbose` flag)
+- [x] Logga conversion start/end timestamps
+- [x] Logga filstorlekar (input NEF, output JPG)
+
+### Improvements Made
+- **Validation**: Added `validate_nef_file()` and `validate_output_path()` functions
+- **File extension**: Validates .NEF/.nef extensions (exit code 8)
+- **File size**: Min 100KB, Max 100MB validation (exit code 9)
+- **Path safety**: Output must be under /tmp or user home directory
+- **Documentation**: Comprehensive module docstring with exit codes
+- **Function docstrings**: All functions documented with Args/Returns/Raises
+- **Verbose mode**: `--verbose` flag enables detailed logging
+- **Logging**: Timestamps, file sizes, conversion time, image dimensions
+- **Constants**: Configuration moved to top-level constants (MIN_FILE_SIZE, etc.)
 
 ## Prioritet 3 - Nice to have
 
