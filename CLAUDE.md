@@ -24,6 +24,7 @@ The application supports a master-slave architecture where:
 - `main.js` - Electron main process: window management, file watching, NEF conversion, IPC handling
 - `renderer.js` - Renderer process: image display, zoom controls, view synchronization
 - `index.html` - Minimal HTML shell for the image viewer
+- `nef2jpg.py` - Python script for converting Nikon RAW (NEF) files to JPG
 - `package.json` - Project dependencies (Electron only)
 
 ### Key Features
@@ -43,13 +44,14 @@ The application supports a master-slave architecture where:
 **hitta_ansikten repository:**
 - Location: `~/dev/hitta_ansikten`
 - This is the companion face detection application that bildvisare is designed to work with
-- Bildvisare depends on scripts from this repo for NEF conversion
+- Bildvisare works as a viewer for images processed by hitta_ansikten
 
-**NEF-to-JPG conversion:**
-- Python interpreter: `/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3`
-- Conversion script: `/Users/krisniem/dev/hitta_ansikten/nef2jpg.py`
-- These paths are hardcoded in main.js:41-42
-- The script is used to convert Nikon RAW (NEF) files to JPG for display in the slave viewer
+**Python dependencies for NEF conversion:**
+- Python interpreter: `/Users/krisniem/.local/share/miniforge3/envs/hitta_ansikten/bin/python3` (hardcoded in main.js:41)
+- Conversion script: `nef2jpg.py` (located in this repository's root)
+- Required Python packages: `rawpy`, `pillow` (PIL)
+- The script converts Nikon RAW (NEF) files to JPG for display in the slave viewer
+- Install dependencies: `pip install rawpy pillow`
 
 ## Development Commands
 
