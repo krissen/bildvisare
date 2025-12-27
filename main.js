@@ -527,6 +527,47 @@ function createMasterWindow() {
   const resolvedBildFil = bildFil ? path.resolve(bildFil) : null;
   if (resolvedBildFil) {
     updateFileStatus(resolvedBildFil);
+
+    // AUTO-CONVERT: If opening a NEF file, convert to JPG first
+    if (resolvedBildFil.toLowerCase().endsWith('.nef')) {
+      logger.info("Auto-converting NEF to JPG for display:", resolvedBildFil);
+      const nefBase = path.basename(resolvedBildFil, path.extname(resolvedBildFil));
+      const jpgPath = `/tmp/${nefBase}_preview.jpg`;
+
+      // Show wait overlay
+      mainWindow.webContents.once('did-finish-load', () => {
+        mainWindow.webContents.send("show-wait-overlay", "Converting NEF to JPG for preview...");
+      });
+
+      convertNEFtoJPG(resolvedBildFil, jpgPath, (err, outJpg) => {
+        if (err || !outJpg) {
+          logger.error("Failed to convert NEF:", err);
+          mainWindow.webContents.send("show-wait-overlay",
+            "Failed to convert NEF file.<br>Try opening the JPG version instead.");
+          setTimeout(() => {
+            mainWindow.webContents.send("hide-wait-overlay");
+          }, 3000);
+          // Load anyway to show error in UI
+          mainWindow.loadFile("index.html", {
+            query: { bild: "", slave: "0" },
+          });
+          return;
+        }
+
+        // Success - reload with JPG
+        logger.info("NEF converted, loading JPG:", outJpg);
+        mainWindow.loadFile("index.html", {
+          query: { bild: encodeURIComponent(outJpg), slave: "0" },
+        });
+      }, logger);
+
+      // Load index.html first (for overlay to work)
+      mainWindow.loadFile("index.html", {
+        query: { bild: "", slave: "0" },
+      });
+      return;
+    }
+
     dlog("Window loading with image:", resolvedBildFil);
     mainWindow.loadFile("index.html", {
       query: { bild: encodeURIComponent(resolvedBildFil), slave: "0" },
