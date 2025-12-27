@@ -12,6 +12,21 @@ const ZOOM_MAX = 10; // Maximum zoom level (10x)
 const ZOOM_MIN = 0.1; // Minimum zoom level (0.1x = 10% of original)
 const ZOOM_INTERVAL_MS = 120; // Continuous zoom every 120ms when key held
 const FILE_RELOAD_CHECK_INTERVAL_MS = 1000; // Check for file changes every 1s
+const SCROLL_DEBOUNCE_MS = 16; // Debounce scroll events (~60fps)
+const RESIZE_DEBOUNCE_MS = 100; // Debounce resize events
+
+// Utility: Simple debounce function for performance
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
 // SECURITY: No more direct require() - using secure preload bridge
 const container = document.getElementById("bild-container");
@@ -225,13 +240,15 @@ if (!bildPath) {
     window.bildvisareAPI.send("bild-visad");
   };
 
-  container.addEventListener("scroll", () => {
+  // PERFORMANCE: Debounce scroll events to avoid excessive IPC
+  container.addEventListener("scroll", debounce(() => {
     syncViewToOther();
-  });
+  }, SCROLL_DEBOUNCE_MS));
 
-  window.addEventListener("resize", () => {
+  // PERFORMANCE: Debounce resize events
+  window.addEventListener("resize", debounce(() => {
     if (zoomMode === "auto") updateImageDisplay();
-  });
+  }, RESIZE_DEBOUNCE_MS));
 
   window.addEventListener("keydown", (event) => {
     dlog(
@@ -327,13 +344,10 @@ if (!bildPath) {
     }
   });
 
-  async function reloadIfChanged() {
-    // SECURITY: Use IPC to check file changes instead of direct fs access
-    const result = await window.bildvisareAPI.checkFileChanged(bildPath);
-
-    if (!result.error && result.mtimeMs !== lastMtime) {
-      dlog("Image file updated, reloading.");
-      lastMtime = result.mtimeMs;
+  // PERFORMANCE: Use fs.watch via IPC instead of polling
+  window.bildvisareAPI.onFileChanged((changedPath) => {
+    if (changedPath === bildPath) {
+      dlog("Image file changed, reloading:", bildPath);
       img.onload = function () {
         dlog(
           "img.onload after reload, size:",
@@ -349,10 +363,10 @@ if (!bildPath) {
       };
       img.src = bildPath + "?t=" + Date.now();
     }
+  });
 
-    setTimeout(reloadIfChanged, FILE_RELOAD_CHECK_INTERVAL_MS);
-  }
-  reloadIfChanged();
+  // Start watching the file
+  window.bildvisareAPI.watchFile(bildPath);
 
   zoomMode = "auto";
   zoomFactor = 1;

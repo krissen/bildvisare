@@ -25,4 +25,17 @@ contextBridge.exposeInMainWorld("bildvisareAPI", {
   checkFileChanged: (filePath) => {
     return ipcRenderer.invoke("check-file-changed", filePath);
   },
+
+  // PERFORMANCE: File watching via IPC instead of polling
+  watchFile: (filePath) => {
+    ipcRenderer.send("watch-file", filePath);
+  },
+
+  unwatchFile: (filePath) => {
+    ipcRenderer.send("unwatch-file", filePath);
+  },
+
+  onFileChanged: (callback) => {
+    ipcRenderer.on("file-changed", (event, filePath) => callback(filePath));
+  },
 });

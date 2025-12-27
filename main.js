@@ -304,6 +304,83 @@ ipcMain.handle("check-file-changed", async (event, filePath) => {
   }
 });
 
+// PERFORMANCE: File watching instead of polling
+// Map of file paths to {watcher, senders: Set<WebContents>}
+const fileWatchers = new Map();
+
+ipcMain.on("watch-file", (event, filePath) => {
+  // Validate file path
+  if (!isValidImagePath(filePath)) {
+    dlog("SECURITY: Rejected file watch request for invalid path:", filePath);
+    return;
+  }
+
+  if (!fs.existsSync(filePath)) {
+    dlog("WARNING: Cannot watch non-existent file:", filePath);
+    return;
+  }
+
+  const sender = event.sender;
+
+  // If already watching this file, just add this sender
+  if (fileWatchers.has(filePath)) {
+    const entry = fileWatchers.get(filePath);
+    entry.senders.add(sender);
+    dlog("Added sender to existing watcher for:", filePath);
+    return;
+  }
+
+  // Create new watcher
+  try {
+    const watcher = fs.watch(filePath, (eventType) => {
+      if (eventType === "change") {
+        dlog("File changed, notifying watchers:", filePath);
+        const entry = fileWatchers.get(filePath);
+        if (entry) {
+          // Notify all windows watching this file
+          entry.senders.forEach((s) => {
+            if (!s.isDestroyed()) {
+              s.send("file-changed", filePath);
+            }
+          });
+        }
+      }
+    });
+
+    fileWatchers.set(filePath, {
+      watcher,
+      senders: new Set([sender]),
+    });
+
+    dlog("Started watching file:", filePath);
+
+    // Clean up when sender (window) is destroyed
+    sender.on("destroyed", () => {
+      unwatchFileForSender(filePath, sender);
+    });
+  } catch (err) {
+    dlog("ERROR: Failed to watch file:", filePath, err.message);
+  }
+});
+
+ipcMain.on("unwatch-file", (event, filePath) => {
+  unwatchFileForSender(filePath, event.sender);
+});
+
+function unwatchFileForSender(filePath, sender) {
+  const entry = fileWatchers.get(filePath);
+  if (!entry) return;
+
+  entry.senders.delete(sender);
+
+  // If no more senders, close the watcher
+  if (entry.senders.size === 0) {
+    entry.watcher.close();
+    fileWatchers.delete(filePath);
+    dlog("Stopped watching file (no more watchers):", filePath);
+  }
+}
+
 // ------ Slave instance handling and original_status.json monitoring ------
 
 function readSlaveStatusFile() {
